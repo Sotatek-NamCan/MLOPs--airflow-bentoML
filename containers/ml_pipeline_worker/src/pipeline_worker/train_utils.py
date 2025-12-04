@@ -139,7 +139,18 @@ def load_train_data(path: str, target_column: str) -> tuple[pd.DataFrame, pd.Ser
     if target_column not in df.columns:
         raise ValueError(f"Target column '{target_column}' not found in data.")
 
-    X = df.drop(columns=[target_column])
+    feature_df = df.drop(columns=[target_column])
+    numeric_features = feature_df.select_dtypes(include=["number", "bool"])
+    dropped_columns = [col for col in feature_df.columns if col not in numeric_features.columns]
+    if dropped_columns:
+        print(f"[Training] Dropping non-numeric feature columns: {dropped_columns}")
+    if numeric_features.empty:
+        raise ValueError(
+            "No numeric features remain after dropping non-numeric columns. "
+            "Encode categorical features before training."
+        )
+
+    X = numeric_features
     y = df[target_column]
     return X, y
 

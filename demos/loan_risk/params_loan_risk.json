@@ -1,0 +1,73 @@
+{
+  "data_source": "s3://demo-ml-datasets/demos/loan_risk/consumer_loan_risk.csv",
+  "data_format": "csv",
+  "input_schema_version": "v1",
+  "model_name": "logistic_regression",
+  "model_version": "3",
+  "hyperparameters": {
+    "C": 0.8,
+    "max_iter": 500,
+    "solver": "lbfgs"
+  },
+  "training_scenario": "demo_consumer_lending",
+  "target_output_path": "s3://demo-ml-artifacts/models/loan_risk/",
+  "test_size": 0.25,
+  "random_state": 99,
+  "ingestion_config": {
+    "object_storage": {
+      "enabled": true,
+      "bucket": "demo-ml-datasets",
+      "object_key": "demos/loan_risk/consumer_loan_risk.csv",
+      "cache_dir": "demos/cache_loan_risk"
+    },
+    "file_extension": ".csv"
+  },
+  "target_column": "loan_defaulted",
+  "data_validation": {
+    "min_row_count": 400,
+    "required_columns": [
+      "application_id",
+      "annual_income",
+      "credit_score",
+      "debt_to_income_ratio",
+      "current_loan_amount",
+      "late_payments",
+      "has_cosigner",
+      "loan_defaulted"
+    ],
+    "non_null_columns": [
+      "application_id",
+      "annual_income",
+      "credit_score",
+      "debt_to_income_ratio",
+      "current_loan_amount",
+      "late_payments",
+      "has_cosigner",
+      "loan_defaulted"
+    ],
+    "value_ranges": {
+      "credit_score": {
+        "min": 450,
+        "max": 850
+      },
+      "debt_to_income_ratio": {
+        "min": 0.1,
+        "max": 0.75
+      },
+      "late_payments": {
+        "min": 0,
+        "max": 12
+      }
+    },
+    "allowed_values": {
+      "has_cosigner": [
+        0,
+        1
+      ],
+      "loan_defaulted": [
+        0,
+        1
+      ]
+    }
+  }
+}
