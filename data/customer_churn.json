@@ -1,0 +1,22 @@
+﻿[
+  {"tenure": 12, "monthly_charges": 70.5, "total_charges": 846, "contract_month_to_month": 1, "contract_one_year": 0, "contract_two_year": 0, "has_phone_service": 1, "has_internet": 1, "tech_support": 1, "churned": 0},
+  {"tenure": 3, "monthly_charges": 56.2, "total_charges": 168.6, "contract_month_to_month": 1, "contract_one_year": 0, "contract_two_year": 0, "has_phone_service": 1, "has_internet": 0, "tech_support": 0, "churned": 1},
+  {"tenure": 24, "monthly_charges": 90.1, "total_charges": 2162.4, "contract_month_to_month": 0, "contract_one_year": 1, "contract_two_year": 0, "has_phone_service": 1, "has_internet": 1, "tech_support": 1, "churned": 0},
+  {"tenure": 6, "monthly_charges": 65.0, "total_charges": 390.0, "contract_month_to_month": 1, "contract_one_year": 0, "contract_two_year": 0, "has_phone_service": 0, "has_internet": 1, "tech_support": 0, "churned": 1},
+  {"tenure": 18, "monthly_charges": 80.7, "total_charges": 1452.6, "contract_month_to_month": 0, "contract_one_year": 0, "contract_two_year": 1, "has_phone_service": 1, "has_internet": 1, "tech_support": 1, "churned": 0},
+  {"tenure": 2, "monthly_charges": 50.3, "total_charges": 100.6, "contract_month_to_month": 1, "contract_one_year": 0, "contract_two_year": 0, "has_phone_service": 0, "has_internet": 1, "tech_support": 0, "churned": 1},
+  {"tenure": 30, "monthly_charges": 95.0, "total_charges": 2850, "contract_month_to_month": 0, "contract_one_year": 1, "contract_two_year": 0, "has_phone_service": 1, "has_internet": 1, "tech_support": 1, "churned": 0},
+  {"tenure": 8, "monthly_charges": 60.8, "total_charges": 486.4, "contract_month_to_month": 1, "contract_one_year": 0, "contract_two_year": 0, "has_phone_service": 1, "has_internet": 0, "tech_support": 0, "churned": 1},
+  {"tenure": 15, "monthly_charges": 75.6, "total_charges": 1134, "contract_month_to_month": 0, "contract_one_year": 1, "contract_two_year": 0, "has_phone_service": 1, "has_internet": 1, "tech_support": 1, "churned": 0},
+  {"tenure": 4, "monthly_charges": 55.1, "total_charges": 220.4, "contract_month_to_month": 1, "contract_one_year": 0, "contract_two_year": 0, "has_phone_service": 0, "has_internet": 1, "tech_support": 0, "churned": 1},
+  {"tenure": 20, "monthly_charges": 88.9, "total_charges": 1778, "contract_month_to_month": 0, "contract_one_year": 0, "contract_two_year": 1, "has_phone_service": 1, "has_internet": 1, "tech_support": 1, "churned": 0},
+  {"tenure": 1, "monthly_charges": 49.8, "total_charges": 49.8, "contract_month_to_month": 1, "contract_one_year": 0, "contract_two_year": 0, "has_phone_service": 0, "has_internet": 0, "tech_support": 0, "churned": 1},
+  {"tenure": 22, "monthly_charges": 92.4, "total_charges": 2032.8, "contract_month_to_month": 0, "contract_one_year": 1, "contract_two_year": 0, "has_phone_service": 1, "has_internet": 1, "tech_support": 1, "churned": 0},
+  {"tenure": 5, "monthly_charges": 58.2, "total_charges": 291, "contract_month_to_month": 1, "contract_one_year": 0, "contract_two_year": 0, "has_phone_service": 0, "has_internet": 1, "tech_support": 0, "churned": 1},
+  {"tenure": 28, "monthly_charges": 93.3, "total_charges": 2612.4, "contract_month_to_month": 0, "contract_one_year": 1, "contract_two_year": 0, "has_phone_service": 1, "has_internet": 1, "tech_support": 1, "churned": 0},
+  {"tenure": 9, "monthly_charges": 62.7, "total_charges": 564.3, "contract_month_to_month": 1, "contract_one_year": 0, "contract_two_year": 0, "has_phone_service": 1, "has_internet": 0, "tech_support": 0, "churned": 1},
+  {"tenure": 16, "monthly_charges": 78.8, "total_charges": 1260.8, "contract_month_to_month": 0, "contract_one_year": 1, "contract_two_year": 0, "has_phone_service": 1, "has_internet": 1, "tech_support": 1, "churned": 0},
+  {"tenure": 7, "monthly_charges": 61.4, "total_charges": 429.8, "contract_month_to_month": 1, "contract_one_year": 0, "contract_two_year": 0, "has_phone_service": 0, "has_internet": 1, "tech_support": 0, "churned": 1},
+  {"tenure": 19, "monthly_charges": 83.2, "total_charges": 1580.8, "contract_month_to_month": 0, "contract_one_year": 0, "contract_two_year": 1, "has_phone_service": 1, "has_internet": 1, "tech_support": 1, "churned": 0},
+  {"tenure": 10, "monthly_charges": 64.9, "total_charges": 649, "contract_month_to_month": 1, "contract_one_year": 0, "contract_two_year": 0, "has_phone_service": 1, "has_internet": 0, "tech_support": 0, "churned": 1}
+]
