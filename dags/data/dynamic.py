@@ -115,6 +115,25 @@ BASE_ENV = _env_subset(
 BASE_ENV["PIPELINE_PROJECT_ROOT"] = _literal_template(CONTAINER_PROJECT_DIR)
 BASE_ENV["PIPELINE_ENV_FILE"] = _literal_template(f"{CONTAINER_PROJECT_DIR}/.env")
 
+ARTIFACT_BUCKET = os.environ.get("ML_PIPELINE_ARTIFACT_BUCKET") or os.environ.get("OBJECT_STORAGE_BUCKET")
+if not ARTIFACT_BUCKET:
+    raise RuntimeError(
+        "Set OBJECT_STORAGE_BUCKET or ML_PIPELINE_ARTIFACT_BUCKET to enable S3 hand-off between tasks."
+    )
+artifact_prefix = os.environ.get("ML_PIPELINE_ARTIFACT_PREFIX", "ml-pipeline-runs").strip("/")
+if not artifact_prefix:
+    artifact_prefix = "ml-pipeline-runs"
+RUN_ID_SAFE = "{{ run_id | replace(':', '_') }}"
+RUN_S3_PREFIX = f"{artifact_prefix}/{{{{ ds_nodash }}}}/{RUN_ID_SAFE}"
+DATASET_OBJECT_KEY = f"{RUN_S3_PREFIX}/datasets/ingested.{{{{ params.data_format }}}}"
+DATASET_S3_URI = f"s3://{ARTIFACT_BUCKET}/{DATASET_OBJECT_KEY}"
+VALIDATION_REPORT_KEY = f"{RUN_S3_PREFIX}/validation/report.json"
+TRAINING_OUTPUT_BASE = f"s3://{ARTIFACT_BUCKET}/{RUN_S3_PREFIX}"
+MODEL_ARTIFACT_URI = (
+    f"{TRAINING_OUTPUT_BASE}/models/{{{{ params.model_name }}}}_v{{{{ params.model_version }}}}/"
+    f"{{{{ params.model_name }}}}_v{{{{ params.model_version }}}}.pkl"
+)
+
 
 def _ecs_environment(extra_env: dict[str, str] | None = None) -> list[dict[str, str]]:
     env = dict(BASE_ENV)
@@ -196,8 +215,12 @@ with DAG(
             "{{ params.ingestion_config | tojson }}",
             "--project-root",
             CONTAINER_PROJECT_DIR,
+            "--upload-bucket",
+            ARTIFACT_BUCKET,
+            "--upload-object-key",
+            DATASET_OBJECT_KEY,
         ],
-        xcom_push=True,
+        xcom_push=False,
     )
 
     validate_task = _pipeline_task(
@@ -206,13 +229,17 @@ with DAG(
             "-m",
             "pipeline_worker.cli.validate_data",
             "--dataset-path",
-            "{{ ti.xcom_pull(task_ids='ingest_dataset') }}",
+            DATASET_S3_URI,
             "--data-format",
             "{{ params.data_format }}",
             "--target-column",
             "{{ params.target_column }}",
             "--validation-config",
             "{{ params.data_validation | tojson }}",
+            "--report-upload-bucket",
+            ARTIFACT_BUCKET,
+            "--report-upload-object-key",
+            VALIDATION_REPORT_KEY,
         ],
         xcom_push=False,
     )
@@ -223,7 +250,7 @@ with DAG(
             "-m",
             "pipeline_worker.cli.train_model",
             "--train-data-path",
-            "{{ ti.xcom_pull(task_ids='ingest_dataset') }}",
+            DATASET_S3_URI,
             "--target-column",
             "{{ params.target_column }}",
             "--model-name",
@@ -235,13 +262,13 @@ with DAG(
             "--training-scenario",
             "{{ params.training_scenario }}",
             "--target-output-path",
-            "{{ params.target_output_path }}",
+            TRAINING_OUTPUT_BASE,
             "--test-size",
             "{{ params.test_size }}",
             "--random-state",
             "{{ params.random_state }}",
         ],
-        xcom_push=True,
+        xcom_push=False,
     )
 
     save_results_task = _pipeline_task(
@@ -250,11 +277,11 @@ with DAG(
             "-m",
             "pipeline_worker.cli.save_results",
             "--model-artifact-path",
-            "{{ ti.xcom_pull(task_ids='train_model') }}",
+            MODEL_ARTIFACT_URI,
             "--target-output-path",
             "{{ params.target_output_path }}",
         ],
-        xcom_push=True,
+        xcom_push=False,
     )
 
     ingest_task >> validate_task >> train_task >> save_results_task

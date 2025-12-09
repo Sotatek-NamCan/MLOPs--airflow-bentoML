@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import socket
 import string
@@ -8,7 +9,6 @@ from pathlib import Path
 from typing import Iterable
 
 from docker.types import Mount
-import json
 
 from airflow import DAG
 from airflow.models.param import Param
@@ -92,11 +92,46 @@ def _host_bind_root() -> Path | None:
     return None
 
 
+def _upload_python_snippet() -> str:
+    return (
+        "from pathlib import Path\n"
+        "import os\n"
+        "from pipeline_worker.storage import build_storage_client\n"
+        "client = build_storage_client()\n"
+        "source = Path(os.environ['UPLOAD_SOURCE'])\n"
+        "object_key = os.environ['UPLOAD_OBJECT_KEY']\n"
+        "client.upload(source=source, object_key=object_key)\n"
+    )
+
+
+def _upload_block(local_path: str, object_key: str) -> str:
+    snippet = _upload_python_snippet()
+    return (
+        f'UPLOAD_SOURCE="{local_path}" UPLOAD_OBJECT_KEY="{object_key}" python - <<\'PY\'\n'
+        f"{snippet}"
+        "PY\n"
+    )
+
+
 HOST_PROJECT_DIR = _host_bind_root()
 CONTAINER_PROJECT_DIR = os.environ.get("ML_PIPELINE_CONTAINER_PROJECT_DIR", "/srv/pipeline")
 PIPELINE_IMAGE = os.environ.get("ML_TASK_IMAGE", "mlops/pipeline-worker:latest")
 DOCKER_URL = os.environ.get("ML_PIPELINE_DOCKER_URL", "unix://var/run/docker.sock")
 SHARED_VOLUME_NAME = os.environ.get("ML_PIPELINE_SHARED_VOLUME", "ml_pipeline_workspace")
+S3_ARTIFACT_PREFIX = os.environ.get("ML_PIPELINE_ARTIFACT_PREFIX", "pipeline-runs")
+RUN_ID_SAFE = "{{ run_id | replace(':', '_') }}"
+RUN_LOCAL_DIR = f"{CONTAINER_PROJECT_DIR}/artifacts/{RUN_ID_SAFE}"
+RUN_S3_PREFIX = f"{S3_ARTIFACT_PREFIX}/{{{{ ds_nodash }}}}/{RUN_ID_SAFE}"
+
+DATASET_LOCAL_PATH = f"{RUN_LOCAL_DIR}/datasets/ingested.{{{{ params.data_format | default('csv') }}}}"
+DATASET_S3_KEY = f"{RUN_S3_PREFIX}/datasets/ingested.{{{{ params.data_format | default('csv') }}}}"
+VALIDATION_REPORT_PATH = f"{RUN_LOCAL_DIR}/validation/report.json"
+VALIDATION_S3_KEY = f"{RUN_S3_PREFIX}/validation/report.json"
+MODEL_LOCAL_PATH = f"{RUN_LOCAL_DIR}/models/model_artifact.bin"
+MODEL_S3_KEY = f"{RUN_S3_PREFIX}/models/model_artifact.bin"
+RESULT_LOCAL_PATH = f"{RUN_LOCAL_DIR}/results/result.json"
+RESULT_S3_KEY = f"{RUN_S3_PREFIX}/results/result.json"
+
 SHARED_MOUNTS = (
     [
         Mount(
@@ -132,6 +167,11 @@ BASE_ENV = _env_subset(
 BASE_ENV["PIPELINE_PROJECT_ROOT"] = _literal_template(CONTAINER_PROJECT_DIR)
 BASE_ENV["PIPELINE_ENV_FILE"] = _literal_template(f"{CONTAINER_PROJECT_DIR}/.env")
 
+INGEST_UPLOAD_BLOCK = _upload_block(DATASET_LOCAL_PATH, DATASET_S3_KEY)
+VALIDATION_UPLOAD_BLOCK = _upload_block(VALIDATION_REPORT_PATH, VALIDATION_S3_KEY)
+MODEL_UPLOAD_BLOCK = _upload_block(MODEL_LOCAL_PATH, MODEL_S3_KEY)
+RESULT_UPLOAD_BLOCK = _upload_block(RESULT_LOCAL_PATH, RESULT_S3_KEY)
+
 with DAG(
     dag_id="ml_dynamic_pipeline_with_ingestion_and_training",
     start_date=datetime(2024, 1, 1),
@@ -165,23 +205,26 @@ with DAG(
         docker_url=DOCKER_URL,
         api_version="auto",
         command=[
-            "-m",
-            "pipeline_worker.cli.ingest_data",
-            "--data-source",
-            "{{ params.data_source }}",
-            "--data-format",
-            "{{ params.data_format }}",
-            "--input-schema-version",
-            "{{ params.input_schema_version }}",
-            "--ingestion-config",
-            "{{ params.ingestion_config | tojson }}",
-            "--project-root",
-            CONTAINER_PROJECT_DIR,
+            "bash",
+            "-c",
+            f"""
+set -euo pipefail
+OUTPUT_PATH=$(python -m pipeline_worker.cli.ingest_data \
+    --data-source "{{{{ params.data_source }}}}" \
+    --data-format "{{{{ params.data_format }}}}" \
+    --input-schema-version "{{{{ params.input_schema_version }}}}" \
+    --ingestion-config "{{{{ params.ingestion_config | tojson }}}}" \
+    --project-root {CONTAINER_PROJECT_DIR})
+TARGET="{DATASET_LOCAL_PATH}"
+mkdir -p "$(dirname "$TARGET")"
+cp "$OUTPUT_PATH" "$TARGET"
+{INGEST_UPLOAD_BLOCK}
+""",
         ],
         environment={**BASE_ENV},
         mount_tmp_dir=False,
         auto_remove="success",
-        do_xcom_push=True,
+        do_xcom_push=False,
         mounts=SHARED_MOUNTS,
     )
 
@@ -191,17 +234,19 @@ with DAG(
         docker_url=DOCKER_URL,
         api_version="auto",
         command=[
-            "-m",
-            "pipeline_worker.cli.validate_data",
-            "--dataset-path",
-            "{{ ti.xcom_pull(task_ids='ingest_dataset') }}",
-            "--data-format",
-            "{{ params.data_format }}",
-            "--target-column",
-            "--target-column",
-            "{{ params.target_column }}",
-            "--validation-config",
-            "{{ params.data_validation | tojson }}",
+            "bash",
+            "-c",
+            f"""
+set -euo pipefail
+TARGET="{VALIDATION_REPORT_PATH}"
+mkdir -p "$(dirname "$TARGET")"
+python -m pipeline_worker.cli.validate_data \
+    --dataset-path "{DATASET_LOCAL_PATH}" \
+    --data-format "{{{{ params.data_format }}}}" \
+    --target-column "{{{{ params.target_column }}}}" \
+    --validation-config "{{{{ params.data_validation | tojson }}}}" | tee "$TARGET"
+{VALIDATION_UPLOAD_BLOCK}
+""",
         ],
         environment={**BASE_ENV},
         mount_tmp_dir=False,
@@ -216,31 +261,30 @@ with DAG(
         docker_url=DOCKER_URL,
         api_version="auto",
         command=[
-            "-m",
-            "pipeline_worker.cli.train_model",
-            "--train-data-path",
-            "{{ ti.xcom_pull(task_ids='ingest_dataset') }}",
-            "--target-column",
-            "{{ params.target_column }}",
-            "--model-name",
-            "{{ params.model_name }}",
-            "--model-version",
-            "{{ params.model_version }}",
-            "--hyperparameters",
-            "{{ params.hyperparameters | tojson }}",
-            "--training-scenario",
-            "{{ params.training_scenario }}",
-            "--target-output-path",
-            "{{ params.target_output_path }}",
-            "--test-size",
-            "{{ params.test_size }}",
-            "--random-state",
-            "{{ params.random_state }}",
+            "bash",
+            "-c",
+            f"""
+set -euo pipefail
+OUTPUT_PATH=$(python -m pipeline_worker.cli.train_model \
+    --train-data-path "{DATASET_LOCAL_PATH}" \
+    --target-column "{{{{ params.target_column }}}}" \
+    --model-name "{{{{ params.model_name }}}}" \
+    --model-version "{{{{ params.model_version }}}}" \
+    --hyperparameters "{{{{ params.hyperparameters | tojson }}}}" \
+    --training-scenario "{{{{ params.training_scenario }}}}" \
+    --target-output-path "{{{{ params.target_output_path }}}}" \
+    --test-size "{{{{ params.test_size }}}}" \
+    --random-state "{{{{ params.random_state }}}}")
+TARGET="{MODEL_LOCAL_PATH}"
+mkdir -p "$(dirname "$TARGET")"
+cp "$OUTPUT_PATH" "$TARGET"
+{MODEL_UPLOAD_BLOCK}
+""",
         ],
         environment={**BASE_ENV},
         mount_tmp_dir=False,
         auto_remove="success",
-        do_xcom_push=True,
+        do_xcom_push=False,
         mounts=SHARED_MOUNTS,
     )
 
@@ -250,17 +294,23 @@ with DAG(
         docker_url=DOCKER_URL,
         api_version="auto",
         command=[
-            "-m",
-            "pipeline_worker.cli.save_results",
-            "--model-artifact-path",
-            "{{ ti.xcom_pull(task_ids='train_model') }}",
-            "--target-output-path",
-            "{{ params.target_output_path }}",
+            "bash",
+            "-c",
+            f"""
+set -euo pipefail
+OUTPUT_PATH=$(python -m pipeline_worker.cli.save_results \
+    --model-artifact-path "{MODEL_LOCAL_PATH}" \
+    --target-output-path "{{{{ params.target_output_path }}}}")
+TARGET="{RESULT_LOCAL_PATH}"
+mkdir -p "$(dirname "$TARGET")"
+cp "$OUTPUT_PATH" "$TARGET"
+{RESULT_UPLOAD_BLOCK}
+""",
         ],
         environment={**BASE_ENV},
         mount_tmp_dir=False,
         auto_remove="success",
-        do_xcom_push=True,
+        do_xcom_push=False,
         mounts=SHARED_MOUNTS,
     )
 

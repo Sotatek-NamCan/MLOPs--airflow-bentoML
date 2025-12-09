@@ -7,6 +7,12 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
+from pipeline_worker.storage import (
+    ObjectStorageConfigurationError,
+    ObjectStorageOperationError,
+    build_storage_client,
+)
+
 from pipeline_worker.ingestion import ingest_data
 
 
@@ -78,6 +84,14 @@ def main() -> None:
         default=str(_default_project_root()),
         help="Path to repository root for resolving cache directories.",
     )
+    parser.add_argument(
+        "--upload-bucket",
+        help="S3 bucket where the ingested dataset should be uploaded.",
+    )
+    parser.add_argument(
+        "--upload-object-key",
+        help="S3 object key for the ingested dataset. Requires --upload-bucket or OBJECT_STORAGE_BUCKET.",
+    )
 
     args = parser.parse_args()
     ingestion_cfg = _parse_json(args.ingestion_config)
@@ -85,7 +99,29 @@ def main() -> None:
     project_root = Path(args.project_root).resolve()
 
     _, local_path = ingest_data(config=config, project_root=project_root)
-    print(str(local_path))
+    upload_key = args.upload_object_key
+
+    if upload_key:
+        upload_bucket = args.upload_bucket or os.getenv("OBJECT_STORAGE_BUCKET")
+        if not upload_bucket:
+            raise SystemExit(
+                "upload-object-key was provided but no upload bucket is configured. "
+                "Set --upload-bucket or OBJECT_STORAGE_BUCKET."
+            )
+        try:
+            client = build_storage_client(bucket=upload_bucket)
+            client.upload(source=local_path, object_key=upload_key, bucket=upload_bucket)
+        except ObjectStorageConfigurationError as exc:
+            raise SystemExit(
+                "Failed to configure object storage client for dataset upload."
+            ) from exc
+        except ObjectStorageOperationError as exc:
+            raise SystemExit(
+                f"Failed to upload dataset to s3://{upload_bucket}/{upload_key}."
+            ) from exc
+        print(f"s3://{upload_bucket}/{upload_key}")
+    else:
+        print(str(local_path))
 
 
 if __name__ == "__main__":
