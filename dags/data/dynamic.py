@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Iterable, Sequence
 
 from airflow import DAG
@@ -47,37 +47,28 @@ def _split_csv_env(var_name: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-def _assign_public_ip(value: str | None) -> str:
-    normalized = (value or "DISABLED").strip().upper()
-    if normalized not in {"ENABLED", "DISABLED"}:
-        return "DISABLED"
-    return normalized
-
-
 CONTAINER_PROJECT_DIR = os.environ.get("ML_PIPELINE_CONTAINER_PROJECT_DIR", "/srv/pipeline")
 AWS_CONN_ID = os.environ.get("ML_PIPELINE_AWS_CONN_ID", "aws_default")
-ECS_CLUSTER = os.environ.get("ML_PIPELINE_ECS_CLUSTER", "ml-pipeline-cluster")
-ECS_TASK_DEFINITION = os.environ.get("ML_PIPELINE_ECS_TASK_DEFINITION", "ml-pipeline-task")
-ECS_LAUNCH_TYPE = os.environ.get("ML_PIPELINE_ECS_LAUNCH_TYPE", "FARGATE")
-ECS_CONTAINER_NAME = os.environ.get("ML_PIPELINE_ECS_CONTAINER_NAME", "pipeline")
-ECS_SUBNETS = _split_csv_env("ML_PIPELINE_ECS_SUBNETS")
-ECS_SECURITY_GROUPS = _split_csv_env("ML_PIPELINE_ECS_SECURITY_GROUPS")
-ECS_ASSIGN_PUBLIC_IP = _assign_public_ip(os.environ.get("ML_PIPELINE_ECS_ASSIGN_PUBLIC_IP"))
-ECS_PLATFORM_VERSION = os.environ.get("ML_PIPELINE_ECS_PLATFORM_VERSION")
-ECS_PROPAGATE_TAGS = os.environ.get("ML_PIPELINE_ECS_PROPAGATE_TAGS")
+REGION_NAME = os.environ.get("ML_PIPELINE_AWS_REGION", "eu-central-1")
+CLUSTER_NAME = os.environ.get("ML_PIPELINE_ECS_CLUSTER", "apache-airflow-worker-cluster")
+TASK_DEFINITION = os.environ.get("ML_PIPELINE_ECS_TASK_DEFINITION", "airflow-worker")
+LAUNCH_TYPE = os.environ.get("ML_PIPELINE_ECS_LAUNCH_TYPE", "FARGATE")
+CONTAINER_NAME = os.environ.get("ML_PIPELINE_ECS_CONTAINER_NAME", "airflow-worker")
+SUBNETS = _split_csv_env("ML_PIPELINE_ECS_SUBNETS") or ["subnet-"]
+SECURITY_GROUPS = _split_csv_env("ML_PIPELINE_ECS_SECURITY_GROUPS") or ["sg-"]
 
 
 def _build_network_configuration():
-    if not ECS_SUBNETS:
+    if not SUBNETS:
         return None
     config: dict[str, dict] = {
         "awsvpcConfiguration": {
-            "subnets": ECS_SUBNETS,
-            "assignPublicIp": ECS_ASSIGN_PUBLIC_IP,
+            "subnets": SUBNETS,
+            "assignPublicIp": "ENABLED",
         }
     }
-    if ECS_SECURITY_GROUPS:
-        config["awsvpcConfiguration"]["securityGroups"] = ECS_SECURITY_GROUPS
+    if SECURITY_GROUPS:
+        config["awsvpcConfiguration"]["securityGroups"] = SECURITY_GROUPS
     return config
 
 
@@ -85,17 +76,22 @@ NETWORK_CONFIGURATION = _build_network_configuration()
 
 BASE_ECS_OPERATOR_KWARGS: dict[str, object] = {
     "aws_conn_id": AWS_CONN_ID,
-    "cluster": ECS_CLUSTER,
-    "task_definition": ECS_TASK_DEFINITION,
-    "launch_type": ECS_LAUNCH_TYPE,
+    "cluster": CLUSTER_NAME,
+    "task_definition": TASK_DEFINITION,
+    "launch_type": LAUNCH_TYPE,
     "wait_for_completion": True,
 }
 if NETWORK_CONFIGURATION:
     BASE_ECS_OPERATOR_KWARGS["network_configuration"] = NETWORK_CONFIGURATION
-if ECS_PLATFORM_VERSION:
-    BASE_ECS_OPERATOR_KWARGS["platform_version"] = ECS_PLATFORM_VERSION
-if ECS_PROPAGATE_TAGS:
-    BASE_ECS_OPERATOR_KWARGS["propagate_tags"] = ECS_PROPAGATE_TAGS
+if REGION_NAME:
+    BASE_ECS_OPERATOR_KWARGS["region_name"] = REGION_NAME
+
+DEFAULT_DAG_ARGS = {
+    "owner": "airflow",
+    "depends_on_past": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5),
+}
 
 
 BASE_ENV = _env_subset(
@@ -148,7 +144,7 @@ def _build_overrides(
     extra_env: dict[str, str] | None = None,
 ) -> dict:
     container_override: dict[str, object] = {
-        "name": ECS_CONTAINER_NAME,
+        "name": CONTAINER_NAME,
         "command": _stringify_command(command),
     }
     environment = _ecs_environment(extra_env)
@@ -175,6 +171,7 @@ def _pipeline_task(
 
 with DAG(
     dag_id="ml_dynamic_pipeline_with_ingestion_and_training",
+    default_args=DEFAULT_DAG_ARGS,
     start_date=datetime(2024, 1, 1),
     schedule=None,
     catchup=False,
