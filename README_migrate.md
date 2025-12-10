@@ -1,66 +1,70 @@
 # README Migrate
 
-Tài liệu này mô tả các bước cần thực hiện khi muốn **di chuyển DAG `dags/data/dynamic.py` sang kiến trúc chạy trên ECS** và **đóng gói lại thư mục `containers/` (đặc biệt là `containers/ml_pipeline_worker`)** để các task mới hoạt động ổn định.
+Huong dan nay giai thich cac buoc can lam khi chuyen DAG `dags/data/dynamic.py` sang Airflow + AWS ECS va dong goi lai anh `containers/ml_pipeline_worker`.
 
-## 1. Việc cần làm với `containers/ml_pipeline_worker`
+## 1. Thu muc `containers/ml_pipeline_worker`
 
-Thư mục này chứa toàn bộ mã nguồn và Dockerfile dùng để xây dựng image mà các task trong DAG sẽ chạy. Khi migrate, luôn làm các bước sau:
+1. **Cap nhat ma nguon CLI**
+   - Cac tac vu trong DAG goi truc tiep cac module `pipeline_worker.cli.ingest_data`, `pipeline_worker.cli.validate_data`, `pipeline_worker.cli.train_model`, `pipeline_worker.cli.save_results`.
+   - Moi thay doi luong du lieu phai duoc cap nhat trong cac file CLI tuong ung va commit cung voi thay doi DAG.
 
-1. **Cập nhật mã nguồn CLI**  
-   - Các entrypoint mà DAG gọi tới là `pipeline_worker.cli.ingest_data`, `pipeline_worker.cli.validate_data`, `pipeline_worker.cli.train_model` và `pipeline_worker.cli.save_results` (xem dưới `src/pipeline_worker/cli/`).  
-   - Nếu thay đổi luồng xử lý, hãy chỉnh trong các file tương ứng (`containers/ml_pipeline_worker/src/pipeline_worker/cli/*.py`) và commit cùng lúc với thay đổi DAG.
+2. **Cap nhat phu thuoc**
+   - Sua `containers/ml_pipeline_worker/pyproject.toml` khi them bot goi thu vien.
+   - Kiem tra nhanh bang `pip install -e .` (hoac `poetry install`) ngay tai thu muc nay.
 
-2. **Cập nhật dependency**  
-   - Sửa `containers/ml_pipeline_worker/pyproject.toml` nếu cần thêm/thay gói.  
-   - Có thể kiểm tra nhanh bằng `pip install -e .` (hoặc `poetry install`) ngay trong thư mục này.
-
-3. **Build & push image mới**  
+3. **Build & push image**
    ```powershell
    cd containers/ml_pipeline_worker
-   docker build -t <your-registry>/ml-pipeline-worker:<tag> .
-   docker push <your-registry>/ml-pipeline-worker:<tag>
+   docker build -t <registry>/ml-pipeline-worker:<tag> .
+   docker push <registry>/ml-pipeline-worker:<tag>
    ```
-   - Với AWS ECS, nên đẩy lên Amazon ECR (ví dụ `aws_account_id.dkr.ecr.region.amazonaws.com/ml-pipeline-worker:latest`).
-   - Ghi nhớ tên image để gán cho `ML_PIPELINE_ECS_TASK_DEFINITION` (khi tạo task definition bạn sẽ tham chiếu tới image này).
+   - Voi AWS ECS nen push len ECR (vi du `123456789012.dkr.ecr.eu-central-1.amazonaws.com/ml-pipeline-worker:latest`).
+   - Task definition tren ECS se tai image nay, vi vay de dang thay doi bang cach doi tag trong bien moi truong.
 
-4. **Kiểm tra cục bộ**  
-   - Có thể chạy thử CLI trực tiếp:  
-     `docker run --rm -it --env-file ../../.env <image-tag> python -m pipeline_worker.cli.validate_data --help`.
-   - Đảm bảo các biến môi trường như `OBJECT_STORAGE_*`, `MLFLOW_TRACKING_URI` hoạt động đúng (được truyền từ Airflow vào task).
+4. **Smoke test CLI**
+   ```powershell
+   docker run --rm -it `
+     --env-file ..\..\ .env `
+     <registry>/ml-pipeline-worker:<tag> `
+     python -m pipeline_worker.cli.validate_data --help
+   ```
+   - Dat chu y den cac bien `OBJECT_STORAGE_*`, `MLFLOW_*`, `PIPELINE_*` phai ton tai trong `.env` vi Airflow se truyen nguyen ven vao container.
 
-## 2. Việc cần làm với `dags/data/dynamic.py`
+## 2. Thu muc `dags/data/dynamic.py`
 
-Phiên bản mới dùng `airflow.providers.amazon.aws.operators.ecs.EcsRunTaskOperator`. Các bước migrate:
+Phien ban moi su dung `EcsRunTaskOperator` va gan cac constant theo mau trong `dags/data/dags-demo.py`.
 
-1. **Thiết lập biến môi trường cho Airflow**  
-   - Tối thiểu cần:  
-     `ML_PIPELINE_AWS_CONN_ID`, `ML_PIPELINE_ECS_CLUSTER`, `ML_PIPELINE_ECS_TASK_DEFINITION`, `ML_PIPELINE_ECS_LAUNCH_TYPE`, `ML_PIPELINE_ECS_CONTAINER_NAME`.  
-   - Với mạng VPC, cung cấp `ML_PIPELINE_ECS_SUBNETS` (chuỗi CSV) và `ML_PIPELINE_ECS_SECURITY_GROUPS`.  
-   - Nếu cần phiên bản platform cụ thể: `ML_PIPELINE_ECS_PLATFORM_VERSION`.  
-   - Dòng artifact chung: `ML_PIPELINE_ARTIFACT_BUCKET` và (tuỳ chọn) `ML_PIPELINE_ARTIFACT_PREFIX`.
+1. **Hang so ECS**
+   - `CLUSTER_NAME`, `TASK_DEFINITION`, `LAUNCH_TYPE`, `REGION_NAME`, `AWS_CONN_ID`, `SUBNETS`, `SECURITY_GROUPS`, `CONTAINER_NAME`, `NETWORK_CONFIGURATION` duoc khoi tao giong demo.
+   - Moi gia tri co the override qua cac bien:
+     - `ML_PIPELINE_AWS_CONN_ID`
+     - `ML_PIPELINE_AWS_REGION`
+     - `ML_PIPELINE_ECS_CLUSTER`
+     - `ML_PIPELINE_ECS_TASK_DEFINITION`
+     - `ML_PIPELINE_ECS_LAUNCH_TYPE`
+     - `ML_PIPELINE_ECS_CONTAINER_NAME`
+     - `ML_PIPELINE_ECS_SUBNETS` (CSV)
+     - `ML_PIPELINE_ECS_SECURITY_GROUPS` (CSV)
+   - `NETWORK_CONFIGURATION` la dictionary giong file demo (khong dung ham trung gian) de Airflow luon day dung `subnets`, `securityGroups`, `assignPublicIp`.
 
-2. **Cập nhật connections/permissions**  
-   - Tạo Airflow Connection có ID trùng `ML_PIPELINE_AWS_CONN_ID`, chứa role hoặc access key có quyền `ecs:RunTask`, `iam:PassRole`, cũng như quyền đọc/ghi S3 bucket nêu ở trên.
-   - Task definition ECS phải mount biến môi trường từ Airflow (operator đính vào trường `overrides.containerOverrides.environment`). Đảm bảo container hiểu các biến `PIPELINE_PROJECT_ROOT`, `PIPELINE_ENV_FILE`, `OBJECT_STORAGE_*`, `MLFLOW_*`, …
+2. **BASE_ECS_OPERATOR_KWARGS**
+   - Gom toan bo tham so chung (`cluster`, `task_definition`, `launch_type`, `aws_conn_id`, `region_name`, `network_configuration`, `wait_for_completion`).
+   - Moi task goi `_pipeline_task` se giai nen dict nay, giup ban khong phai lap lai cau hinh cho tung `EcsRunTaskOperator`.
 
-3. **Tùy chỉnh lệnh chạy (nếu cần)**  
-   - Mỗi task dùng `_pipeline_task` để gom tham số chung. Command mặc định (trong `dynamic.py`) chạy `python -m pipeline_worker.cli.<...>`. Khi bổ sung stage mới, tái sử dụng `_pipeline_task(...)` và truyền `command` list phù hợp.
-   - `_stringify_command` tự động chuyển list → list[str]; tránh đưa object phức tạp ngoài phạm vi JSON.
+3. **Dynamic parameters**
+   - Phan `params={...}` cua DAG giu nguyen, cho phep truyen JSON tu Airflow UI hoac CLI.
+   - Cac duong dan S3 (`RUN_S3_PREFIX`, `DATASET_S3_URI`, `MODEL_ARTIFACT_URI`...) duoc xay dung tu `ML_PIPELINE_ARTIFACT_BUCKET` va `ML_PIPELINE_ARTIFACT_PREFIX`. Neu khong set, DAG se bao loi ngay khi import.
 
-4. **Quản lý artifact qua S3**  
-   - DAG thiết lập `RUN_S3_PREFIX`, `DATASET_S3_URI`, `MODEL_ARTIFACT_URI`... dựa trên `ML_PIPELINE_ARTIFACT_BUCKET`. Kiểm tra bucket tồn tại và worker container có quyền `s3:PutObject`/`s3:GetObject`.
-   - Nếu vẫn cần lưu file local, chỉnh `pipeline_worker` để tải lại từ S3 (định vị qua các biến ở `BASE_ENV`).
+4. **Moi truong va artifact**
+   - `BASE_ENV` gom cac bien `OBJECT_STORAGE_*`, `MLFLOW_*`, `MODEL_ARTIFACT_CACHE_DIR`. Airflow se chen vao override cua container.
+   - Moi task chi viec chuyen lenh `python -m pipeline_worker.cli.<command>` va upload artifact len S3 thong qua cac tham so `--upload-bucket`, `--upload-object-key` (ingest) hoac `--report-upload-*`, `--target-output-path`.
 
-5. **Kích hoạt DAG sau khi migrate**  
-   - Deploy file `dynamic.py` mới lên Airflow scheduler.  
-   - Từ UI, tạo run thử bằng JSON trong `param*.json`. Kiểm tra trong AWS Console xem ECS task xuất hiện và hoàn thành, đồng thời kiểm chứng artifact thực sự ghi vào bucket mong muốn.
+## 3. Checklist truoc khi trigger DAG tren ECS
 
-## Checklist nhanh trước khi triển khai
+- [ ] Build va push lai image `containers/ml_pipeline_worker` sau khi thay doi ma nguon.
+- [ ] Tao hoac cap nhat Task Definition tren ECS tro dung image va co command entrypoint `python`.
+- [ ] Cap nhat `.env` (hoac Airflow Variables) voi tat ca bien `ML_PIPELINE_*`, `OBJECT_STORAGE_*`, `MLFLOW_*`.
+- [ ] Sync file `dags/data/dynamic.py` len Airflow scheduler va kiem tra no su dung `EcsRunTaskOperator` (khong con DockerOperator).
+- [ ] Tu giao dien Airflow, trigger mot run bang JSON trong `param.json` va theo doi tren AWS Console/S3 de chac chan artifact duoc tao dung noi.
 
-- [ ] Thư mục `containers/ml_pipeline_worker` đã build image mới và push lên registry/ECR.  
-- [ ] Task Definition ECS trỏ đúng image vừa build và expose command `python -m pipeline_worker.cli.*`.  
-- [ ] `.env` hoặc Airflow Variables chứa đủ các biến `ML_PIPELINE_*`, `OBJECT_STORAGE_*`, `MLFLOW_*`.  
-- [ ] `dags/data/dynamic.py` được sync lên Airflow và không còn tham chiếu tới DockerOperator cũ.  
-- [ ] Đã chạy thử 1 DAG run và xác nhận dataset, validation report, model artifact xuất hiện trên S3.
-
-Hoàn thành các bước trên sẽ giúp môi trường Airflow chuyển sang mô hình chạy task trên ECS một cách an toàn và dễ bảo trì.
+Hoan thanh cac buoc tren se giup qua trinh migrate tu DockerOperator sang EcsRunTaskOperator dien ra on dinh va de quan ly hon.

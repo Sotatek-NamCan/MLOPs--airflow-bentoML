@@ -58,21 +58,13 @@ SUBNETS = _split_csv_env("ML_PIPELINE_ECS_SUBNETS") or ["subnet-"]
 SECURITY_GROUPS = _split_csv_env("ML_PIPELINE_ECS_SECURITY_GROUPS") or ["sg-"]
 
 
-def _build_network_configuration():
-    if not SUBNETS:
-        return None
-    config: dict[str, dict] = {
-        "awsvpcConfiguration": {
-            "subnets": SUBNETS,
-            "assignPublicIp": "ENABLED",
-        }
+NETWORK_CONFIGURATION = {
+    "awsvpcConfiguration": {
+        "subnets": SUBNETS,
+        "securityGroups": SECURITY_GROUPS,
+        "assignPublicIp": "ENABLED",
     }
-    if SECURITY_GROUPS:
-        config["awsvpcConfiguration"]["securityGroups"] = SECURITY_GROUPS
-    return config
-
-
-NETWORK_CONFIGURATION = _build_network_configuration()
+}
 
 BASE_ECS_OPERATOR_KWARGS: dict[str, object] = {
     "aws_conn_id": AWS_CONN_ID,
@@ -81,8 +73,7 @@ BASE_ECS_OPERATOR_KWARGS: dict[str, object] = {
     "launch_type": LAUNCH_TYPE,
     "wait_for_completion": True,
 }
-if NETWORK_CONFIGURATION:
-    BASE_ECS_OPERATOR_KWARGS["network_configuration"] = NETWORK_CONFIGURATION
+BASE_ECS_OPERATOR_KWARGS["network_configuration"] = NETWORK_CONFIGURATION
 if REGION_NAME:
     BASE_ECS_OPERATOR_KWARGS["region_name"] = REGION_NAME
 
