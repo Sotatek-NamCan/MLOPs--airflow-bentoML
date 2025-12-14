@@ -160,6 +160,7 @@ TRAINED_MODEL_URI = (
     f"{TRAINING_BASE_URI}/models/{{{{ params.model_name }}}}_v{{{{ params.model_version }}}}/"
     f"{{{{ params.model_name }}}}_v{{{{ params.model_version }}}}.pkl"
 )
+TUNING_RESULTS_URI = f"{RUN_ARTIFACT_BASE}/tuning/best_params.json"
 
 BASE_OPERATOR_KWARGS = {
     "image": PIPELINE_IMAGE,
@@ -214,6 +215,16 @@ with DAG(
             type="object",
             description="Expectation overrides for dataset validation.",
         ),
+        "hyperparameter_tuning": Param(
+            {
+                "enabled": False,
+                "n_trials": 20,
+                "timeout": 600,
+                "search_space": {},
+            },
+            type="object",
+            description="Optuna tuning settings (set enabled true to search).",
+        ),
     },
     tags=["ml", "pipeline", "docker"],
 ) as dag:
@@ -257,6 +268,31 @@ with DAG(
         do_xcom_push=False,
     )
 
+    tune_task = _pipeline_task(
+        task_id="tune_hyperparameters",
+        command=[
+            "-m",
+            "pipeline_worker.cli.tune_model",
+            "--train-data-path",
+            INGESTED_DATASET_URI,
+            "--target-column",
+            "{{ params.target_column }}",
+            "--model-name",
+            "{{ params.model_name }}",
+            "--base-hyperparameters",
+            "{{ params.hyperparameters | tojson }}",
+            "--tuning-config",
+            "{{ params.hyperparameter_tuning | tojson }}",
+            "--output-uri",
+            TUNING_RESULTS_URI,
+            "--test-size",
+            "{{ params.test_size }}",
+            "--random-state",
+            "{{ params.random_state }}",
+        ],
+        do_xcom_push=False,
+    )
+
     train_task = _pipeline_task(
         task_id="train_model",
         command=[
@@ -280,6 +316,8 @@ with DAG(
             "{{ params.test_size }}",
             "--random-state",
             "{{ params.random_state }}",
+            "--best-params-uri",
+            TUNING_RESULTS_URI,
         ],
         do_xcom_push=False,
     )
@@ -297,4 +335,4 @@ with DAG(
         do_xcom_push=False,
     )
 
-    ingest_task >> validate_task >> train_task >> save_results_task
+    ingest_task >> validate_task >> tune_task >> train_task >> save_results_task

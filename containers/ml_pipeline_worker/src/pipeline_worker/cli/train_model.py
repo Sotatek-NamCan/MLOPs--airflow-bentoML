@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 from typing import Any, Dict
 
 from pipeline_worker.train_utils import train_and_save_model
@@ -41,6 +42,10 @@ def main() -> None:
     )
     parser.add_argument("--test-size", type=float, default=0.2)
     parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument(
+        "--best-params-uri",
+        help="Optional path/URI to tuned hyperparameters JSON.",
+    )
 
     args = parser.parse_args()
     hyperparameters = _parse_hyperparameters(args.hyperparameters)
@@ -49,6 +54,14 @@ def main() -> None:
     output_dir = f"{base_output}/models/{args.model_name}_v{args.model_version}/"
 
     train_data_local = ensure_local_artifact(args.train_data_path)
+    if args.best_params_uri:
+        tuned_path = ensure_local_artifact(args.best_params_uri)
+        try:
+            tuned_payload = json.loads(Path(tuned_path).read_text(encoding="utf-8"))
+        except Exception as exc:  # pragma: no cover - defensive
+            raise SystemExit(f"Failed to read tuned hyperparameters: {exc}") from exc
+        if isinstance(tuned_payload, dict):
+            hyperparameters.update(tuned_payload)
 
     model_path = train_and_save_model(
         train_data_path=str(train_data_local),
