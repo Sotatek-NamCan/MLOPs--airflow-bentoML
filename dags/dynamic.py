@@ -146,6 +146,21 @@ BASE_ENV = _env_subset(
 BASE_ENV["PIPELINE_PROJECT_ROOT"] = _literal_template(CONTAINER_PROJECT_DIR)
 BASE_ENV["PIPELINE_ENV_FILE"] = _literal_template(f"{CONTAINER_PROJECT_DIR}/.env")
 
+ARTIFACT_BUCKET = os.environ.get("ML_PIPELINE_ARTIFACT_BUCKET") or os.environ.get("OBJECT_STORAGE_BUCKET")
+ARTIFACT_PREFIX = os.environ.get("ML_PIPELINE_ARTIFACT_PREFIX", "ml-pipeline-runs")
+if ARTIFACT_BUCKET:
+    ARTIFACT_BASE_PREFIX = f"s3://{ARTIFACT_BUCKET}/{ARTIFACT_PREFIX.strip('/')}"
+else:
+    ARTIFACT_BASE_PREFIX = f"{CONTAINER_PROJECT_DIR}/data/runs"
+RUN_ARTIFACT_BASE = f"{ARTIFACT_BASE_PREFIX}/{{{{ dag_run.run_id or ts_nodash }}}}"
+INGESTED_DATASET_URI = f"{RUN_ARTIFACT_BASE}/ingested/dataset.csv"
+VALIDATION_REPORT_URI = f"{RUN_ARTIFACT_BASE}/validation/summary.json"
+TRAINING_BASE_URI = f"{RUN_ARTIFACT_BASE}/training"
+TRAINED_MODEL_URI = (
+    f"{TRAINING_BASE_URI}/models/{{{{ params.model_name }}}}_v{{{{ params.model_version }}}}/"
+    f"{{{{ params.model_name }}}}_v{{{{ params.model_version }}}}.pkl"
+)
+
 BASE_OPERATOR_KWARGS = {
     "image": PIPELINE_IMAGE,
     "docker_url": DOCKER_URL,
@@ -217,8 +232,10 @@ with DAG(
             "{{ params.ingestion_config | tojson }}",
             "--project-root",
             CONTAINER_PROJECT_DIR,
+            "--output-uri",
+            INGESTED_DATASET_URI,
         ],
-        do_xcom_push=True,
+        do_xcom_push=False,
     )
 
     validate_task = _pipeline_task(
@@ -227,13 +244,15 @@ with DAG(
             "-m",
             "pipeline_worker.cli.validate_data",
             "--dataset-path",
-            "{{ ti.xcom_pull(task_ids='ingest_dataset') }}",
+            INGESTED_DATASET_URI,
             "--data-format",
             "{{ params.data_format }}",
             "--target-column",
             "{{ params.target_column }}",
             "--validation-config",
             "{{ params.data_validation | tojson }}",
+            "--report-uri",
+            VALIDATION_REPORT_URI,
         ],
         do_xcom_push=False,
     )
@@ -244,7 +263,7 @@ with DAG(
             "-m",
             "pipeline_worker.cli.train_model",
             "--train-data-path",
-            "{{ ti.xcom_pull(task_ids='ingest_dataset') }}",
+            INGESTED_DATASET_URI,
             "--target-column",
             "{{ params.target_column }}",
             "--model-name",
@@ -256,13 +275,13 @@ with DAG(
             "--training-scenario",
             "{{ params.training_scenario }}",
             "--target-output-path",
-            "{{ params.target_output_path }}",
+            TRAINING_BASE_URI,
             "--test-size",
             "{{ params.test_size }}",
             "--random-state",
             "{{ params.random_state }}",
         ],
-        do_xcom_push=True,
+        do_xcom_push=False,
     )
 
     save_results_task = _pipeline_task(
@@ -271,11 +290,11 @@ with DAG(
             "-m",
             "pipeline_worker.cli.save_results",
             "--model-artifact-path",
-            "{{ ti.xcom_pull(task_ids='train_model') }}",
+            TRAINED_MODEL_URI,
             "--target-output-path",
             "{{ params.target_output_path }}",
         ],
-        do_xcom_push=True,
+        do_xcom_push=False,
     )
 
     ingest_task >> validate_task >> train_task >> save_results_task

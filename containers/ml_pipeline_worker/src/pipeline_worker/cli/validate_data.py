@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
 import pandas as pd
 
+from pipeline_worker.artifacts import ensure_local_artifact, upload_local_artifact
 from pipeline_worker.ingestion import DataIngestorFactory
 from pipeline_worker.validation import (
     DataValidationError,
@@ -49,7 +51,7 @@ def _json_default(value: Any) -> Any:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Validate dataset with Great Expectations.")
-    parser.add_argument("--dataset-path", required=True, help="Local dataset path to validate.")
+    parser.add_argument("--dataset-path", required=True, help="Dataset path or S3 URI to validate.")
     parser.add_argument("--data-format", help="Optional dataset format (csv, json, parquet, ...).")
     parser.add_argument("--target-column", required=True, help="Target column used for training.")
     parser.add_argument(
@@ -57,9 +59,13 @@ def main() -> None:
         default="{}",
         help="Validation overrides as JSON payload.",
     )
+    parser.add_argument(
+        "--report-uri",
+        help="Optional destination (S3/local) for the validation summary JSON.",
+    )
 
     args = parser.parse_args()
-    dataset_path = Path(args.dataset_path).resolve()
+    dataset_path = ensure_local_artifact(args.dataset_path)
     extension = _resolve_extension(dataset_path, args.data_format)
     ingestor = DataIngestorFactory.get_data_ingestor(extension)
     dataframe = ingestor.ingest(dataset_path)
@@ -70,17 +76,26 @@ def main() -> None:
         target_column=args.target_column,
     )
 
+    payload_text: str | None = None
     try:
         summary = validate_dataframe(dataframe, validation_config)
         summary["success"] = True
-        print(json.dumps(summary, default=_json_default))
+        payload_text = json.dumps(summary, default=_json_default)
+        print(payload_text)
     except DataValidationError as exc:
         payload = dict(exc.summary or {})
         payload["success"] = False
         payload.setdefault("results", exc.results)
         payload["failures"] = exc.failures
-        print(json.dumps(payload, default=_json_default))
+        payload_text = json.dumps(payload, default=_json_default)
+        print(payload_text)
         raise SystemExit(1) from exc
+    finally:
+        if args.report_uri and payload_text is not None:
+            tmp_dir = Path(tempfile.mkdtemp())
+            report_path = tmp_dir / "validation_summary.json"
+            report_path.write_text(payload_text, encoding="utf-8")
+            upload_local_artifact(report_path, args.report_uri)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import json
 from typing import Any, Dict
 
 from pipeline_worker.train_utils import train_and_save_model
+from pipeline_worker.artifacts import ensure_local_artifact
 
 
 def _parse_hyperparameters(value: str) -> Dict[str, Any]:
@@ -19,7 +20,7 @@ def _parse_hyperparameters(value: str) -> Dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train model and emit artifact path.")
-    parser.add_argument("--train-data-path", required=True, help="Local dataset path.")
+    parser.add_argument("--train-data-path", required=True, help="Dataset path or S3 URI.")
     parser.add_argument("--target-column", required=True, help="Target column name.")
     parser.add_argument("--model-name", required=True, help="Model identifier.")
     parser.add_argument("--model-version", required=True, help="Model version string.")
@@ -47,8 +48,10 @@ def main() -> None:
     base_output = args.target_output_path.rstrip("/")
     output_dir = f"{base_output}/models/{args.model_name}_v{args.model_version}/"
 
+    train_data_local = ensure_local_artifact(args.train_data_path)
+
     model_path = train_and_save_model(
-        train_data_path=args.train_data_path,
+        train_data_path=str(train_data_local),
         target_column=args.target_column,
         model_name=args.model_name,
         model_version=args.model_version,

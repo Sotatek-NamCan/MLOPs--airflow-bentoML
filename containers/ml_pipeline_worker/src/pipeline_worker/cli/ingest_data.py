@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from pipeline_worker.ingestion import ingest_data
+from pipeline_worker.artifacts import upload_local_artifact
 
 
 def _default_project_root() -> Path:
@@ -78,6 +79,10 @@ def main() -> None:
         default=str(_default_project_root()),
         help="Path to repository root for resolving cache directories.",
     )
+    parser.add_argument(
+        "--output-uri",
+        help="Optional S3 URI where the ingested dataset will be stored.",
+    )
 
     args = parser.parse_args()
     ingestion_cfg = _parse_json(args.ingestion_config)
@@ -85,7 +90,11 @@ def main() -> None:
     project_root = Path(args.project_root).resolve()
 
     _, local_path = ingest_data(config=config, project_root=project_root)
-    print(str(local_path))
+    if args.output_uri:
+        stored_location = upload_local_artifact(local_path, args.output_uri)
+        print(stored_location)
+    else:
+        print(str(local_path))
 
 
 if __name__ == "__main__":

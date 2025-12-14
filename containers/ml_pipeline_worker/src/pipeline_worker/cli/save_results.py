@@ -5,22 +5,22 @@ import argparse
 import sys
 from pathlib import Path
 
+from pipeline_worker.artifacts import artifact_name, copy_artifact
+
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Compute final model artifact destination.")
-    parser.add_argument("--model-artifact-path", required=True, help="Path returned by training step.")
-    parser.add_argument("--target-output-path", required=True, help="Base prefix/directory for storage.")
+    parser = argparse.ArgumentParser(description="Copy trained model artifact to final destination.")
+    parser.add_argument("--model-artifact-path", required=True, help="Source path or URI from training.")
+    parser.add_argument("--target-output-path", required=True, help="Destination directory or URI prefix.")
 
     args = parser.parse_args()
-    artifact_name = Path(args.model_artifact_path).name
     base = args.target_output_path.rstrip("/")
-    if base:
-        saved_location = f"{base}/{artifact_name}"
-    else:
-        saved_location = artifact_name
+    name = artifact_name(args.model_artifact_path)
+    destination = f"{base}/{name}" if base else name
 
-    print(f"Saving model artifact from {args.model_artifact_path} to {saved_location}", file=sys.stderr)
-    print(saved_location)
+    print(f"Copying model artifact to {destination}", file=sys.stderr)
+    final_location = copy_artifact(args.model_artifact_path, destination)
+    print(final_location)
 
 
 if __name__ == "__main__":
