@@ -1,10 +1,7 @@
 .env
 /logs
 dags/common/__pycache__
-data/
 **/__pycache__/
 cache/
-**/*.param.json
-param_*.json
 *.cache
 .envbento

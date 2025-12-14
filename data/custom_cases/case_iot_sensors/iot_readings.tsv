@@ -1,0 +1,4 @@
+device_id	temperature_c	vibration_mm_s	pressure_kpa	fault
+sensor-1	37.1	2.1	102.5	0
+sensor-2	45.2	3.8	99.7	1
+sensor-3	33.6	1.5	101.2	0

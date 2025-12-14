@@ -1,0 +1,23 @@
+[
+  {
+    "lead_id": "ML-1001",
+    "region": "APAC",
+    "annual_spend": 15000,
+    "interactions": 5,
+    "conversion": 1
+  },
+  {
+    "lead_id": "ML-1002",
+    "region": "NA",
+    "annual_spend": 9000,
+    "interactions": 2,
+    "conversion": 0
+  },
+  {
+    "lead_id": "ML-1003",
+    "region": "EMEA",
+    "annual_spend": 12000,
+    "interactions": 4,
+    "conversion": 1
+  }
+]

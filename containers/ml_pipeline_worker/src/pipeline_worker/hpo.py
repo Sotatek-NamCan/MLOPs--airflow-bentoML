@@ -46,6 +46,10 @@ DEFAULT_SEARCH_SPACES: Dict[str, Dict[str, SearchSpec]] = {
         "C": SearchSpec("float", low=0.001, high=10, log=True),
         "max_iter": SearchSpec("int", low=100, high=1000, step=50),
     },
+    "linear_regression": {
+        "fit_intercept": SearchSpec("categorical", choices=[True, False]),
+        "normalize": SearchSpec("categorical", choices=[True, False]),
+    },
 }
 
 
