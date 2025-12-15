@@ -16,35 +16,41 @@ def _literal_template(value: str) -> str:
 
 
 def _stringify_command(value: Sequence | str | None):
-    if isinstance(value, (list, tuple)):
-        normalized = []
-        for part in value:
-            if isinstance(part, (dict, list, tuple)):
-                normalized.append(json.dumps(part))
-            elif part is None:
-                normalized.append("")
-            else:
-                normalized.append(str(part))
-        return normalized
-    if isinstance(value, (dict, list, tuple)):
-        return json.dumps(value)
     if value is None:
         return ""
+    if isinstance(value, (list, tuple)):
+        result = []
+        for part in value:
+            if part is None:
+                result.append("")
+                continue
+            if isinstance(part, (list, tuple, dict)):
+                result.append(json.dumps(part))
+            else:
+                result.append(str(part))
+        return result
+    if isinstance(value, dict):
+        return json.dumps(value)
     return str(value)
 
 
 def _env_subset(keys: Iterable[str]) -> dict[str, str]:
     env: dict[str, str] = {}
     for key in keys:
-        value = os.getenv(key)
+        value = os.environ.get(key)
         if value is not None:
             env[key] = value
     return env
 
 
 def _split_csv_env(var_name: str) -> list[str]:
-    raw = os.getenv(var_name, "")
-    return [item.strip() for item in raw.split(",") if item.strip()]
+    entries: list[str] = []
+    raw_value = os.environ.get(var_name, "")
+    for chunk in raw_value.split(","):
+        cleaned = chunk.strip()
+        if cleaned:
+            entries.append(cleaned)
+    return entries
 
 
 CONTAINER_PROJECT_DIR = os.environ.get("ML_PIPELINE_CONTAINER_PROJECT_DIR", "/srv/pipeline")
@@ -88,34 +94,36 @@ DEFAULT_DAG_ARGS = {
 BASE_ENV = _env_subset(
     [
         "OBJECT_STORAGE_BUCKET",
-        "OBJECT_STORAGE_ENDPOINT_URL",
+        "OBJECT_STORAGE_ENDPOINT_URL",  
         "OBJECT_STORAGE_REGION",
-        "OBJECT_STORAGE_ACCESS_KEY",
-        "OBJECT_STORAGE_SECRET_KEY",
-        "OBJECT_STORAGE_DATASET_BUCKET",
-        "OBJECT_STORAGE_DATASET_KEY",
         "MLFLOW_TRACKING_URI",
         "MLFLOW_EXPERIMENT_NAME",
         "MODEL_ARTIFACT_CACHE_DIR",
     ]
 )
+
+
 BASE_ENV["PIPELINE_PROJECT_ROOT"] = _literal_template(CONTAINER_PROJECT_DIR)
-BASE_ENV["PIPELINE_ENV_FILE"] = _literal_template(f"{CONTAINER_PROJECT_DIR}/.env")
 
 ARTIFACT_BUCKET = os.environ.get("ML_PIPELINE_ARTIFACT_BUCKET") or os.environ.get("OBJECT_STORAGE_BUCKET")
 if not ARTIFACT_BUCKET:
     raise RuntimeError(
         "Set OBJECT_STORAGE_BUCKET or ML_PIPELINE_ARTIFACT_BUCKET to enable S3 hand-off between tasks."
     )
+
 artifact_prefix = os.environ.get("ML_PIPELINE_ARTIFACT_PREFIX", "ml-pipeline-runs").strip("/")
 if not artifact_prefix:
     artifact_prefix = "ml-pipeline-runs"
+
 RUN_ID_SAFE = "{{ run_id | replace(':', '_') }}"
 RUN_S3_PREFIX = f"{artifact_prefix}/{{{{ ds_nodash }}}}/{RUN_ID_SAFE}"
+
 DATASET_OBJECT_KEY = f"{RUN_S3_PREFIX}/datasets/ingested.{{{{ params.data_format }}}}"
 DATASET_S3_URI = f"s3://{ARTIFACT_BUCKET}/{DATASET_OBJECT_KEY}"
+
 VALIDATION_REPORT_KEY = f"{RUN_S3_PREFIX}/validation/report.json"
 TRAINING_OUTPUT_BASE = f"s3://{ARTIFACT_BUCKET}/{RUN_S3_PREFIX}"
+
 MODEL_ARTIFACT_URI = (
     f"{TRAINING_OUTPUT_BASE}/models/{{{{ params.model_name }}}}_v{{{{ params.model_version }}}}/"
     f"{{{{ params.model_name }}}}_v{{{{ params.model_version }}}}.pkl"
@@ -173,7 +181,11 @@ with DAG(
         "input_schema_version": Param("v1", type="string", description="Schema version (optional hook)."),
         "model_name": Param("random_forest_classifier", type="string", description="Model identifier."),
         "model_version": Param("1", type="string", description="Model version string."),
-        "hyperparameters": Param({"n_estimators": 100, "max_depth": 5}, type="object", description="Model hyperparameters."),
+        "hyperparameters": Param(
+            {"n_estimators": 100, "max_depth": 5},
+            type="object",
+            description="Model hyperparameters.",
+        ),
         "training_scenario": Param("full_train", type="string", description="Training scenario label."),
         "target_output_path": Param("s3://bucket/output/", type="string", description="Folder/URI for model artifacts."),
         "test_size": Param(0.2, type="number", description="Validation split ratio."),
