@@ -17,10 +17,10 @@ The goals of this document are:
 | Airflow stack (scheduler, workers, Redis, Postgres) | `docker-compose.yaml` | Orchestrates DAGs; all containers share `./dags`, `./logs`, `./config`, and the Docker socket. |
 | Dynamic DAGs | `dags/data/dynamic.py` | Define the ML workflow with DockerOperators running inside the ML worker image. |
 | ML pipeline worker image | `containers/ml_pipeline_worker` | Python package installed into a slim image; exposes CLI entrypoints for ingestion, validation, training, and result publishing. |
-| Shared project volume | `/srv/pipeline` inside worker containers | Hosts `.env`, cached datasets, trained artifacts, and parameter files; mounted either via bind mount (when `ML_PIPELINE_HOST_PROJECT_DIR` is set) or via the `ml_pipeline_workspace` Docker volume. |
+| Artifact bucket/prefix | `s3://<bucket>/<prefix>` derived from `ML_PIPELINE_ARTIFACT_BUCKET`/`OBJECT_STORAGE_BUCKET` | Every task reads and writes intermediate datasets/artifacts via S3, keeping the worker containers stateless. |
 | Object storage + MLflow | External services referenced via env vars | Provide durable data sources and tracking; credentials are passed in via `.env`. |
 
-The Airflow containers mount the Docker socket so each task can spin up the `ml_pipeline_worker` image. Each task runs in its own container but shares the project volume, allowing datasets and artifacts to flow between tasks without re-downloading.
+The Airflow containers mount the Docker socket so each task can spin up the `ml_pipeline_worker` image. Each task runs in its own container and hands off every intermediate artifact via S3 URIs, so no shared host volume is required.
 
 ---
 
@@ -67,16 +67,10 @@ save_results
 1. **`PipelineDockerOperator`** wraps Airflow’s DockerOperator to:
    - Normalize `command`/`entrypoint` lists into plain strings (fixes template rendering quirks).
    - Force `ti.hostname` to a predictable value (`LOG_STREAM_HOST`), improving log aggregation when tasks run inside nested containers.
-2. **Shared mounts:**  
-   ```python
-   HOST_PROJECT_DIR = _host_bind_root()  # derived from ML_PIPELINE_HOST_PROJECT_DIR or AIRFLOW_PROJ_DIR
-   CONTAINER_PROJECT_DIR = "/srv/pipeline"
-   SHARED_MOUNTS = [Mount(source=host_dir, target="/srv/pipeline", type="bind")] (or a named Docker volume)
-   ```
-   ensures all task containers see the same working tree and `.env`.
+2. **S3-first hand-off:** `ARTIFACT_BASE_PREFIX` is built from `ML_PIPELINE_ARTIFACT_BUCKET` (or `OBJECT_STORAGE_BUCKET`) and is required, so every task exchanges inputs/outputs through run-scoped paths like `s3://<bucket>/ml-pipeline-runs/<run_id>/...`.
 3. **Environment propagation:** `BASE_ENV` forwards `OBJECT_STORAGE_*`, `MLFLOW_*`, and cache settings, plus two helper vars:
-   - `PIPELINE_PROJECT_ROOT`: points to `/srv/pipeline` for code that needs repository context.
-   - `PIPELINE_ENV_FILE`: absolute path to `/srv/pipeline/.env`, enabling modules like `storage.py` to load credentials automatically.
+   - `PIPELINE_PROJECT_ROOT`: points to `/opt/pipeline` (the path baked into the worker image).
+   - `PIPELINE_ENV_FILE`: absolute path to `/opt/pipeline/.env`, enabling modules like `storage.py` to load credentials automatically when running inside the container.
 
 ### 4.2 Parameters (Airflow `params`)
 
@@ -100,7 +94,7 @@ Parameters are rendered with the `render_template_as_native_obj=True` flag, mean
 - **Logic (`pipeline_worker/cli/ingest_data.py` + `ingestion.py`):**
   1. Merges CLI args with the `ingestion_config` JSON.
   2. If the data source is `s3://bucket/key`, it auto-populates `object_storage.bucket`/`object_key`.
-  3. Downloads the dataset using `build_storage_client()` (S3-compatible) into `data/object_storage_cache` under `/srv/pipeline`.
+  3. Downloads the dataset using `build_storage_client()` (S3-compatible), storing it temporarily inside the container before re-uploading it to the run-specific S3 prefix.
   4. Picks a `DataIngestor` based on file extension (`csv`, `parquet`, `json`, `xlsx`, `tsv`, zipped archives, etc.) and reads into a DataFrame.
   5. Writes the local path to stdout, which Airflow captures and stores in XCom (`return_value`).
 - **Failure modes:** Missing credentials (raises `ObjectStorageConfigurationError`), unsupported extension, dataset not found, etc.
@@ -131,9 +125,9 @@ Parameters are rendered with the `render_template_as_native_obj=True` flag, mean
   3. Instantiates one of the supported models (`RandomForestClassifier`, `RandomForestRegressor`, `LogisticRegression`, `LinearRegression`) via `select_model`.
   4. Configures MLflow with `MLFLOW_TRACKING_URI` and propagates S3 credentials (so MLflow can upload artifacts if needed).
   5. Logs params (`model_*`, hyperparameters, scenario, data source) and metrics (accuracy for classifiers, MSE for regressors).
-  6. Saves the trained estimator as `<model_name>_v<model_version>.pkl` under either:
-     - Local path (if `target_output_path` is local).
-     - Cached S3 directory + uploads to the configured bucket/prefix, using the same storage helper as ingestion.
+  6. Saves the trained estimator as `<model_name>_v<model_version>.pkl`:
+     - Directly under the provided path when `target_output_path` is local.
+     - Inside a short-lived temp directory before uploading to the configured S3 bucket/prefix (no shared host folder needed).
   7. Emits the final artifact URI through stdout (captured in XCom).
 
 #### Task: `save_results`
@@ -146,11 +140,11 @@ Parameters are rendered with the `render_template_as_native_obj=True` flag, mean
 
 ## 5. Data & Artifact Flow
 
-1. **Workspace layout inside worker containers (`/srv/pipeline`):**
-   - `.env`: holds credentials (OBJECT_STORAGE, MLflow).
-   - `data/object_storage_cache`: ingestion target for downloaded files; also a convenient seed with sample CSV/JSON/Parquet assets.
-   - `model_artifacts` (default) or custom `MODEL_ARTIFACT_CACHE_DIR`: used by training to stage pickled models before upload.
-   - `param*.json`: sample configurations you can paste into the Airflow Trigger UI.
+1. **Run-scoped S3 layout:**
+   - `s3://<bucket>/<prefix>/<run_id>/ingested/`: dataset emitted by the ingestion task.
+   - `.../validation/`: JSON summary from `validate_dataset`.
+   - `.../tuning/`: best hyperparameters from Optuna (if enabled).
+   - `.../training/models/`: pickled estimators saved by `train_model`.
 2. **Object storage integration:**
    - `build_storage_client()` reads env vars like `OBJECT_STORAGE_ENDPOINT_URL`, `OBJECT_STORAGE_ACCESS_KEY`, etc., optionally loading them from `.env`.
    - With MinIO, point `OBJECT_STORAGE_ENDPOINT_URL` to `http://host.docker.internal:9000` (or whatever map) so in-container clients can resolve it.
@@ -192,7 +186,7 @@ The existing DAG demonstrates the recommended building blocks:
 
 - Import `PipelineDockerOperator` from `dags/data/dynamic.py` (or refactor it into a module) to keep container tasks consistent.
 - Always read `params` for runtime variability instead of hard-coding dataset/model settings.
-- Persist artifacts within the shared `/srv/pipeline` workspace if the output is needed by downstream tasks.
+- Persist artifacts by writing them to the shared S3 prefix (or another durable URI) so downstream tasks can consume them.
 - Leverage the CLI modules under `pipeline_worker/cli/` as single-responsibility entrypoints; when adding new steps (e.g., feature engineering, evaluation), create a dedicated CLI that can be invoked via the DockerOperator.
 
 When creating additional DAGs, keep the same environment variable keys so base infrastructure (`BASE_ENV`, `.env`) works without duplication.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import pickle
+import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
@@ -19,7 +20,6 @@ from pipeline_worker.storage import (
     build_storage_client,
 )
 
-_MODEL_ARTIFACT_CACHE_ENV = "MODEL_ARTIFACT_CACHE_DIR"
 _MLFLOW_TRACKING_URI_ENV = "MLFLOW_TRACKING_URI"
 _MLFLOW_EXPERIMENT_ENV = "MLFLOW_EXPERIMENT_NAME"
 _DEFAULT_TRACKING_URI = "http://localhost:5000"
@@ -37,14 +37,6 @@ _AWS_DEFAULT_REGION_ENV = "AWS_DEFAULT_REGION"
 _MLFLOW_S3_ENDPOINT_ENV = "MLFLOW_S3_ENDPOINT_URL"
 
 
-def _artifact_cache_root() -> Path:
-    configured = os.getenv(_MODEL_ARTIFACT_CACHE_ENV)
-    if configured:
-        return Path(configured)
-    airflow_home = Path(os.getenv("AIRFLOW_HOME", "/opt/airflow"))
-    return airflow_home / "model_artifacts"
-
-
 def _parse_s3_uri(uri: str) -> Tuple[Optional[str], Optional[str]]:
     parsed = urlparse(uri)
     if parsed.scheme.lower() != "s3":
@@ -52,16 +44,6 @@ def _parse_s3_uri(uri: str) -> Tuple[Optional[str], Optional[str]]:
     bucket = parsed.netloc or None
     key = parsed.path.lstrip("/") or None
     return bucket, key
-
-
-def _resolve_local_artifact_dir(bucket: Optional[str], prefix: Optional[str]) -> Path:
-    cache_root = _artifact_cache_root()
-    parts = []
-    if bucket:
-        parts.append(bucket)
-    if prefix:
-        parts.extend([segment for segment in prefix.split("/") if segment])
-    return cache_root.joinpath(*parts) if parts else cache_root
 
 
 def _join_s3_key(prefix: Optional[str], file_name: str) -> str:
@@ -195,84 +177,90 @@ def train_and_save_model(
     _configure_mlflow()
 
     with mlflow.start_run(run_name=f"{model_name}_v{model_version}"):
+        temp_artifact_dir = None
         # Load data
-        X, y = load_train_data(train_data_path, target_column)
+        try:
+            X, y = load_train_data(train_data_path, target_column)
 
-        # Split data
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=random_state
-        )
+            # Split data
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=test_size, random_state=random_state
+            )
 
-        # Instantiate model
-        model = select_model(model_name, hyperparameters)
+            # Instantiate model
+            model = select_model(model_name, hyperparameters)
 
-        _log_mlflow_params(
-            model_name=model_name,
-            model_version=model_version,
-            training_scenario=training_scenario,
-            hyperparameters=hyperparameters,
-            data_source=train_data_path,
-        )
+            _log_mlflow_params(
+                model_name=model_name,
+                model_version=model_version,
+                training_scenario=training_scenario,
+                hyperparameters=hyperparameters,
+                data_source=train_data_path,
+            )
 
-        # Train
-        model.fit(X_train, y_train)
+            # Train
+            model.fit(X_train, y_train)
 
-        # Evaluate
-        metric_name: str
-        metric_value: float
-        if hasattr(model, "predict_proba") or "classifier" in model_name.lower():
-            y_pred = model.predict(X_test)
-            metric_value = accuracy_score(y_test, y_pred)
-            metric_name = "accuracy"
-            print(f"[Training] Model {model_name} v{model_version} Accuracy: {metric_value:.4f}")
-        else:
-            y_pred = model.predict(X_test)
-            metric_value = mean_squared_error(y_test, y_pred)
-            metric_name = "mse"
-            print(f"[Training] Model {model_name} v{model_version} MSE: {metric_value:.4f}")
-        mlflow.log_metric(metric_name, metric_value)
+            # Evaluate
+            metric_name: str
+            metric_value: float
+            if hasattr(model, "predict_proba") or "classifier" in model_name.lower():
+                y_pred = model.predict(X_test)
+                metric_value = accuracy_score(y_test, y_pred)
+                metric_name = "accuracy"
+                print(f"[Training] Model {model_name} v{model_version} Accuracy: {metric_value:.4f}")
+            else:
+                y_pred = model.predict(X_test)
+                metric_value = mean_squared_error(y_test, y_pred)
+                metric_name = "mse"
+                print(f"[Training] Model {model_name} v{model_version} MSE: {metric_value:.4f}")
+            mlflow.log_metric(metric_name, metric_value)
 
-        # Determine output destination
-        output_bucket: Optional[str] = None
-        output_prefix: Optional[str] = None
-        local_output_dir: Path
-        if output_dir.lower().startswith("s3://"):
-            output_bucket, output_prefix = _parse_s3_uri(output_dir)
+            # Determine output destination
+            output_bucket: Optional[str] = None
+            output_prefix: Optional[str] = None
+            local_output_dir: Path
+            if output_dir.lower().startswith("s3://"):
+                output_bucket, output_prefix = _parse_s3_uri(output_dir)
+                if not output_bucket:
+                    raise ValueError("S3 output_dir must include a bucket name.")
+                temp_artifact_dir = tempfile.TemporaryDirectory()
+                local_output_dir = Path(temp_artifact_dir.name)
+            else:
+                local_output_dir = Path(output_dir)
+
+            # Save model artifact locally first
+            local_output_dir.mkdir(parents=True, exist_ok=True)
+            file_name = f"{model_name}_v{model_version}.pkl"
+            local_model_path = local_output_dir / file_name
+            with open(local_model_path, "wb") as f:
+                pickle.dump(model, f)
+
+            artifact_path = str(local_model_path)
+            print(f"[Training] Saved model artifact to {artifact_path}")
+
+            # Upload to S3 if requested
+            if output_bucket:
+                object_key = _join_s3_key(output_prefix, file_name)
+                try:
+                    client = build_storage_client(bucket=output_bucket)
+                    client.upload(source=local_model_path, object_key=object_key, bucket=output_bucket)
+                except ObjectStorageConfigurationError as exc:
+                    raise RuntimeError(
+                        "Failed to configure object storage client for model upload."
+                    ) from exc
+                except ObjectStorageOperationError as exc:
+                    raise RuntimeError(
+                        f"Failed to upload model artifact to s3://{output_bucket}/{object_key}."
+                    ) from exc
+                artifact_path = f"s3://{output_bucket}/{object_key}"
+                print(f"[Training] Uploaded model artifact to {artifact_path}")
+                mlflow.log_param("artifact_path", artifact_path)
+
             if not output_bucket:
-                raise ValueError("S3 output_dir must include a bucket name.")
-            local_output_dir = _resolve_local_artifact_dir(output_bucket, output_prefix)
-        else:
-            local_output_dir = Path(output_dir)
+                mlflow.log_param("artifact_path", artifact_path)
 
-        # Save model artifact locally first
-        local_output_dir.mkdir(parents=True, exist_ok=True)
-        file_name = f"{model_name}_v{model_version}.pkl"
-        local_model_path = local_output_dir / file_name
-        with open(local_model_path, "wb") as f:
-            pickle.dump(model, f)
-
-        artifact_path = str(local_model_path)
-        print(f"[Training] Saved model artifact to {artifact_path}")
-
-        # Upload to S3 if requested
-        if output_bucket:
-            object_key = _join_s3_key(output_prefix, file_name)
-            try:
-                client = build_storage_client(bucket=output_bucket)
-                client.upload(source=local_model_path, object_key=object_key, bucket=output_bucket)
-            except ObjectStorageConfigurationError as exc:
-                raise RuntimeError(
-                    "Failed to configure object storage client for model upload."
-                ) from exc
-            except ObjectStorageOperationError as exc:
-                raise RuntimeError(
-                    f"Failed to upload model artifact to s3://{output_bucket}/{object_key}."
-                ) from exc
-            artifact_path = f"s3://{output_bucket}/{object_key}"
-            print(f"[Training] Uploaded model artifact to {artifact_path}")
-            mlflow.log_param("artifact_path", artifact_path)
-
-        if not output_bucket:
-            mlflow.log_param("artifact_path", artifact_path)
-
-        return artifact_path
+            return artifact_path
+        finally:
+            if temp_artifact_dir is not None:
+                temp_artifact_dir.cleanup()

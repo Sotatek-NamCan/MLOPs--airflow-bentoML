@@ -7,8 +7,6 @@ import string
 from datetime import datetime
 from typing import Iterable, Sequence
 
-from docker.types import Mount
-
 from airflow import DAG
 from airflow.models.param import Param
 from airflow.providers.docker.operators.docker import DockerOperator
@@ -77,57 +75,10 @@ def _env_subset(keys: Iterable[str]) -> dict[str, str]:
     return env
 
 
-def _normalize_host_path(raw: str | None) -> str | None:
-    if not raw:
-        return None
-    candidate = raw.strip().strip('"').replace("\\", "/")
-    if not candidate:
-        return None
-    if candidate.startswith("/"):
-        return candidate
-    if len(candidate) >= 2 and candidate[1] == ":":
-        drive = candidate[0].lower()
-        remainder = candidate[2:].lstrip("/").replace("\\", "/")
-        return f"/host_mnt/{drive}/{remainder}"
-    return None
-
-
-def _host_bind_root() -> str | None:
-    candidates = [
-        os.environ.get("ML_PIPELINE_HOST_PROJECT_DIR"),
-        os.environ.get("AIRFLOW_PROJ_DIR"),
-    ]
-    for candidate in candidates:
-        normalized = _normalize_host_path(candidate)
-        if normalized:
-            return normalized
-    return None
-
-
-HOST_PROJECT_DIR = _host_bind_root()
-CONTAINER_PROJECT_DIR = os.environ.get("ML_PIPELINE_CONTAINER_PROJECT_DIR", "/srv/pipeline")
+CONTAINER_PROJECT_DIR = os.environ.get("ML_PIPELINE_CONTAINER_PROJECT_DIR", "/opt/pipeline")
 PIPELINE_IMAGE = os.environ.get("ML_TASK_IMAGE", "mlops/pipeline-worker:latest")
 DOCKER_URL = os.environ.get("ML_PIPELINE_DOCKER_URL", "unix://var/run/docker.sock")
 DOCKER_API_VERSION = os.environ.get("ML_PIPELINE_DOCKER_API_VERSION", "auto")
-SHARED_VOLUME_NAME = os.environ.get("ML_PIPELINE_SHARED_VOLUME", "ml_pipeline_workspace")
-
-SHARED_MOUNTS = (
-    [
-        Mount(
-            source=HOST_PROJECT_DIR,
-            target=CONTAINER_PROJECT_DIR,
-            type="bind",
-        )
-    ]
-    if HOST_PROJECT_DIR
-    else [
-        Mount(
-            source=SHARED_VOLUME_NAME,
-            target=CONTAINER_PROJECT_DIR,
-            type="volume",
-        )
-    ]
-)
 
 BASE_ENV = _env_subset(
     [
@@ -140,7 +91,6 @@ BASE_ENV = _env_subset(
         "OBJECT_STORAGE_DATASET_KEY",
         "MLFLOW_TRACKING_URI",
         "MLFLOW_EXPERIMENT_NAME",
-        "MODEL_ARTIFACT_CACHE_DIR",
     ]
 )
 BASE_ENV["PIPELINE_PROJECT_ROOT"] = _literal_template(CONTAINER_PROJECT_DIR)
@@ -148,10 +98,11 @@ BASE_ENV["PIPELINE_ENV_FILE"] = _literal_template(f"{CONTAINER_PROJECT_DIR}/.env
 
 ARTIFACT_BUCKET = os.environ.get("ML_PIPELINE_ARTIFACT_BUCKET") or os.environ.get("OBJECT_STORAGE_BUCKET")
 ARTIFACT_PREFIX = os.environ.get("ML_PIPELINE_ARTIFACT_PREFIX", "ml-pipeline-runs")
-if ARTIFACT_BUCKET:
-    ARTIFACT_BASE_PREFIX = f"s3://{ARTIFACT_BUCKET}/{ARTIFACT_PREFIX.strip('/')}"
-else:
-    ARTIFACT_BASE_PREFIX = f"{CONTAINER_PROJECT_DIR}/data/runs"
+if not ARTIFACT_BUCKET:
+    raise RuntimeError(
+        "Object storage bucket is required. Set ML_PIPELINE_ARTIFACT_BUCKET or OBJECT_STORAGE_BUCKET."
+    )
+ARTIFACT_BASE_PREFIX = f"s3://{ARTIFACT_BUCKET}/{ARTIFACT_PREFIX.strip('/')}"
 RUN_ARTIFACT_BASE = f"{ARTIFACT_BASE_PREFIX}/{{{{ dag_run.run_id or ts_nodash }}}}"
 INGESTED_DATASET_URI = f"{RUN_ARTIFACT_BASE}/ingested/dataset.csv"
 VALIDATION_REPORT_URI = f"{RUN_ARTIFACT_BASE}/validation/summary.json"
@@ -166,7 +117,6 @@ BASE_OPERATOR_KWARGS = {
     "image": PIPELINE_IMAGE,
     "docker_url": DOCKER_URL,
     "api_version": DOCKER_API_VERSION,
-    "mounts": SHARED_MOUNTS,
     "mount_tmp_dir": False,
     "auto_remove": "success",
 }

@@ -19,7 +19,7 @@ Airflow/
 │           ├─ storage.py        # Object storage helper classes
 │           └─ train_utils.py    # Model training, MLflow logging, artifact upload
 ├─ config/                       # Airflow configuration overrides (mounted into containers)
-├─ data/                         # Local datasets/cache (shared with worker containers)
+├─ data/                         # Sample datasets/configs (all task hand-offs use S3)
 ├─ logs/                         # Airflow logs
 └─ plugins/                      # Optional Airflow plugins
 ```
@@ -27,11 +27,11 @@ Airflow/
 ## Overview
 This repository wraps an Apache Airflow deployment (CeleryExecutor + Redis + Postgres) that orchestrates a containerised ML pipeline. The DAG at `dags/data/dynamic.py` runs three DockerOperator tasks:
 
-1. **ingest_dataset** – downloads the requested dataset from object storage, caches it under `/srv/pipeline/data/object_storage_cache`, and returns the local file path.
-2. **train_model** – reads the cached dataset, trains the configured model, and logs metrics/artifacts to MLflow.
-3. **save_results** – computes and uploads the final artifact location.
+1. **ingest_dataset** – downloads the requested dataset from object storage, applies any ingestion overrides, and writes the staged dataset to an S3 URI for downstream steps.
+2. **train_model** – pulls the staged dataset from S3, trains the configured model, and logs metrics/artifacts to MLflow.
+3. **save_results** – copies the trained model from its run-specific S3 prefix into the final destination requested by the user.
 
-Each task runs inside the `ml_pipeline_worker` image built from `containers/ml_pipeline_worker`. The project directory (including `.env`, data, and scripts) is mounted at `/srv/pipeline` in every task container so artifacts can be shared between steps.
+Each task runs inside the `ml_pipeline_worker` image built from `containers/ml_pipeline_worker`. Intermediate files move exclusively through S3 (no shared volume between containers).
 
 ## End-to-End Bring-Up (Airflow + MLflow + BentoML)
 Follow the sequence below when you want to stand up the complete lab stack on a fresh machine.
@@ -112,7 +112,7 @@ Follow the sequence below when you want to stand up the complete lab stack on a 
 - `data_source`, `data_format`, `input_schema_version`: describe the dataset to ingest.
 - `model_name`, `model_version`, `hyperparameters`: control which model is trained and with what settings (e.g. logistic regression solver/C/max_iter).
 - `training_scenario`, `target_output_path`, `test_size`, `random_state`: control training behaviour and artifact destinations.
-- `ingestion_config`: optional overrides for the ingestion step. Use `object_storage.object_key` + `bucket` to pull from S3 and prefer **relative** `cache_dir` paths so the file remains inside `/srv/pipeline`.
+- `ingestion_config`: optional overrides for the ingestion step. Use `object_storage.object_key` + `bucket` to pull from S3; `cache_dir` (if set) only affects the temporary workspace inside each worker container.
 - `target_column`: column name used as the prediction target.
 
 You can duplicate `param.json` (or use `param_gradient_boost.json`) as a template for different scenarios; pass the JSON when triggering the DAG through the Airflow UI or CLI.
