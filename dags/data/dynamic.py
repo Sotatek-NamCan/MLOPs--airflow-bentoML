@@ -53,7 +53,6 @@ def _split_csv_env(var_name: str) -> list[str]:
     return entries
 
 
-CONTAINER_PROJECT_DIR = os.environ.get("ML_PIPELINE_CONTAINER_PROJECT_DIR", "/srv/pipeline")
 AWS_CONN_ID = os.environ.get("ML_PIPELINE_AWS_CONN_ID", "aws_default")
 REGION_NAME = os.environ.get("ML_PIPELINE_AWS_REGION", "eu-central-1")
 CLUSTER_NAME = os.environ.get("ML_PIPELINE_ECS_CLUSTER", "apache-airflow-worker-cluster")
@@ -62,7 +61,13 @@ LAUNCH_TYPE = os.environ.get("ML_PIPELINE_ECS_LAUNCH_TYPE", "FARGATE")
 CONTAINER_NAME = os.environ.get("ML_PIPELINE_ECS_CONTAINER_NAME", "airflow-worker")
 SUBNETS = _split_csv_env("ML_PIPELINE_ECS_SUBNETS") or ["subnet-"]
 SECURITY_GROUPS = _split_csv_env("ML_PIPELINE_ECS_SECURITY_GROUPS") or ["sg-"]
+ARTIFACT_BUCKET = os.environ.get("OBJECT_STORAGE_BUCKET")
+if not ARTIFACT_BUCKET:
+    raise RuntimeError("Set OBJECT_STORAGE_BUCKET to enable S3 hand-off between tasks.")
 
+ARTIFACT_PREFIX = os.environ.get("ML_PIPELINE_ARTIFACT_PREFIX", "ml-pipeline-runs").strip("/")
+if not ARTIFACT_PREFIX:
+    ARTIFACT_PREFIX = "ml-pipeline-runs"
 
 NETWORK_CONFIGURATION = {
     "awsvpcConfiguration": {
@@ -103,20 +108,10 @@ BASE_ENV = _env_subset(
 )
 
 
-BASE_ENV["PIPELINE_PROJECT_ROOT"] = _literal_template(CONTAINER_PROJECT_DIR)
 
-ARTIFACT_BUCKET = os.environ.get("ML_PIPELINE_ARTIFACT_BUCKET") or os.environ.get("OBJECT_STORAGE_BUCKET")
-if not ARTIFACT_BUCKET:
-    raise RuntimeError(
-        "Set OBJECT_STORAGE_BUCKET or ML_PIPELINE_ARTIFACT_BUCKET to enable S3 hand-off between tasks."
-    )
-
-artifact_prefix = os.environ.get("ML_PIPELINE_ARTIFACT_PREFIX", "ml-pipeline-runs").strip("/")
-if not artifact_prefix:
-    artifact_prefix = "ml-pipeline-runs"
 
 RUN_ID_SAFE = "{{ run_id | replace(':', '_') }}"
-RUN_S3_PREFIX = f"{artifact_prefix}/{{{{ ds_nodash }}}}/{RUN_ID_SAFE}"
+RUN_S3_PREFIX = f"{ARTIFACT_PREFIX}/{{{{ ds_nodash }}}}/{RUN_ID_SAFE}"
 
 DATASET_OBJECT_KEY = f"{RUN_S3_PREFIX}/datasets/ingested.{{{{ params.data_format }}}}"
 DATASET_S3_URI = f"s3://{ARTIFACT_BUCKET}/{DATASET_OBJECT_KEY}"
@@ -213,8 +208,6 @@ with DAG(
             "{{ params.input_schema_version }}",
             "--ingestion-config",
             "{{ params.ingestion_config | tojson }}",
-            "--project-root",
-            CONTAINER_PROJECT_DIR,
             "--upload-bucket",
             ARTIFACT_BUCKET,
             "--upload-object-key",
