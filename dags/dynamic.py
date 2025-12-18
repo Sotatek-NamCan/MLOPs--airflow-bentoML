@@ -76,7 +76,7 @@ def _env_subset(keys: Iterable[str]) -> dict[str, str]:
 
 
 CONTAINER_PROJECT_DIR = os.environ.get("ML_PIPELINE_CONTAINER_PROJECT_DIR", "/opt/pipeline")
-PIPELINE_IMAGE = os.environ.get("ML_TASK_IMAGE", "mlops/pipeline-worker:latest")
+PIPELINE_IMAGE = os.environ.get("ML_TASK_IMAGE", "mlops/pipeline-worker:local")
 DOCKER_URL = os.environ.get("ML_PIPELINE_DOCKER_URL", "unix://var/run/docker.sock")
 DOCKER_API_VERSION = os.environ.get("ML_PIPELINE_DOCKER_API_VERSION", "auto")
 
@@ -142,7 +142,7 @@ def _pipeline_task(
 
 
 with DAG(
-    dag_id="ml_dynamic_pipeline_with_ingestion_and_training",
+    dag_id="ml_dynamic_pipeline_vippro",
     start_date=datetime(2024, 1, 1),
     schedule=None,
     catchup=False,
@@ -181,6 +181,7 @@ with DAG(
     ingest_task = _pipeline_task(
         task_id="ingest_dataset",
         command=[
+            "python",
             "-m",
             "pipeline_worker.cli.ingest_data",
             "--data-source",
