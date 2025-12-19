@@ -1,0 +1,99 @@
+{
+  "data_source": "s3://cpnam-s3-tfbackend/data/energy_demand_demo.csv",
+  "data_format": "csv",
+  "input_schema_version": "v1",
+  "model_name": "random_forest_regressor",
+  "model_version": "1",
+  "hyperparameters": {
+    "n_estimators": 220,
+    "max_depth": 18,
+    "min_samples_leaf": 2,
+    "min_samples_split": 4,
+    "n_jobs": -1,
+    "random_state": 19
+  },
+  "training_scenario": "demo_energy_demand",
+  "target_output_path": "s3://cpnam-s3-tfbackend/models/",
+  "test_size": 0.2,
+  "random_state": 19,
+  "ingestion_config": {
+    "object_storage": {
+      "enabled": true,
+      "bucket": "cpnam-s3-tfbackend",
+      "object_key": "data/energy_demand_demo.csv",
+      "cache_dir": "data/cache_energy_demand"
+    },
+    "file_extension": ".csv"
+  },
+  "target_column": "demand_mwh",
+  "data_validation": {
+    "min_row_count": 600,
+    "required_columns": [
+      "region_id",
+      "avg_temp_c",
+      "humidity_pct",
+      "industrial_index",
+      "population_density_per_km2",
+      "renewable_share_pct",
+      "demand_mwh"
+    ],
+    "non_null_columns": [
+      "avg_temp_c",
+      "humidity_pct",
+      "industrial_index",
+      "population_density_per_km2",
+      "renewable_share_pct",
+      "demand_mwh"
+    ],
+    "value_ranges": {
+      "avg_temp_c": {
+        "min": -20,
+        "max": 50
+      },
+      "humidity_pct": {
+        "min": 10,
+        "max": 100
+      },
+      "industrial_index": {
+        "min": 0,
+        "max": 200
+      },
+      "population_density_per_km2": {
+        "min": 0,
+        "max": 5000
+      },
+      "demand_mwh": {
+        "min": 100,
+        "max": 8000
+      }
+    }
+  },
+  "hyperparameter_tuning": {
+    "enabled": true,
+    "n_trials": 35,
+    "timeout": 900,
+    "search_space": {
+      "n_estimators": {
+        "type": "int",
+        "low": 100,
+        "high": 500,
+        "step": 25
+      },
+      "max_depth": {
+        "type": "int",
+        "low": 8,
+        "high": 28
+      },
+      "min_samples_leaf": {
+        "type": "int",
+        "low": 1,
+        "high": 6
+      },
+      "min_samples_split": {
+        "type": "int",
+        "low": 2,
+        "high": 10
+      }
+    }
+  }
+}

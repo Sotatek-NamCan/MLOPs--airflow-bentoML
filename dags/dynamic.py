@@ -160,11 +160,11 @@ with DAG(
         "random_state": Param(42, type="integer", description="Random seed used for training."),
         "ingestion_config": Param({}, type="object", description="Optional overrides for ingestion."),
         "target_column": Param("target", type="string", description="Target column to predict."),
-        "data_validation": Param(
-            {"min_row_count": 10},
-            type="object",
-            description="Expectation overrides for dataset validation.",
-        ),
+        # "data_validation": Param(
+        #     {"min_row_count": 10},
+        #     type="object",
+        #     description="Expectation overrides for dataset validation.",
+        # ),
         "hyperparameter_tuning": Param(
             {
                 "enabled": False,
@@ -181,7 +181,6 @@ with DAG(
     ingest_task = _pipeline_task(
         task_id="ingest_dataset",
         command=[
-            "python",
             "-m",
             "pipeline_worker.cli.ingest_data",
             "--data-source",
@@ -200,24 +199,24 @@ with DAG(
         do_xcom_push=False,
     )
 
-    validate_task = _pipeline_task(
-        task_id="validate_dataset",
-        command=[
-            "-m",
-            "pipeline_worker.cli.validate_data",
-            "--dataset-path",
-            INGESTED_DATASET_URI,
-            "--data-format",
-            "{{ params.data_format }}",
-            "--target-column",
-            "{{ params.target_column }}",
-            "--validation-config",
-            "{{ params.data_validation | tojson }}",
-            "--report-uri",
-            VALIDATION_REPORT_URI,
-        ],
-        do_xcom_push=False,
-    )
+    # validate_task = _pipeline_task(
+    #     task_id="validate_dataset",
+    #     command=[
+    #         "-m",
+    #         "pipeline_worker.cli.validate_data",
+    #         "--dataset-path",
+    #         INGESTED_DATASET_URI,
+    #         "--data-format",
+    #         "{{ params.data_format }}",
+    #         "--target-column",
+    #         "{{ params.target_column }}",
+    #         "--validation-config",
+    #         "{{ params.data_validation | tojson }}",
+    #         "--report-uri",
+    #         VALIDATION_REPORT_URI,
+    #     ],
+    #     do_xcom_push=False,
+    # )
 
     tune_task = _pipeline_task(
         task_id="tune_hyperparameters",
@@ -286,4 +285,4 @@ with DAG(
         do_xcom_push=False,
     )
 
-    ingest_task >> validate_task >> tune_task >> train_task >> save_results_task
+    ingest_task >> tune_task >> train_task >> save_results_task

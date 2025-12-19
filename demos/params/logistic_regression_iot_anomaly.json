@@ -1,0 +1,70 @@
+{
+  "data_source": "s3://cpnam-s3-tfbackend/data/iot_sensor_anomalies.json",
+  "data_format": "json",
+  "input_schema_version": "v1",
+  "model_name": "logistic_regression",
+  "model_version": "1",
+  "hyperparameters": {
+    "penalty": "l2",
+    "C": 0.9,
+    "solver": "lbfgs",
+    "max_iter": 400
+  },
+  "training_scenario": "demo_iot_anomaly",
+  "target_output_path": "s3://cpnam-s3-tfbackend/models/",
+  "test_size": 0.25,
+  "random_state": 21,
+  "ingestion_config": {
+    "object_storage": {
+      "enabled": true,
+      "bucket": "cpnam-s3-tfbackend",
+      "object_key": "data/iot_sensor_anomalies.json",
+      "cache_dir": "data/cache_iot_anomaly"
+    },
+    "file_extension": ".json"
+  },
+  "target_column": "is_anomaly",
+  "data_validation": {
+    "min_row_count": 450,
+    "required_columns": [
+      "sensor_id",
+      "temperature_c",
+      "vibration",
+      "voltage",
+      "pressure_bar",
+      "error_code",
+      "is_anomaly"
+    ],
+    "non_null_columns": [
+      "temperature_c",
+      "vibration",
+      "voltage",
+      "pressure_bar",
+      "is_anomaly"
+    ],
+    "value_ranges": {
+      "temperature_c": {
+        "min": 20,
+        "max": 70
+      },
+      "vibration": {
+        "min": 0.2,
+        "max": 1.5
+      },
+      "voltage": {
+        "min": 180,
+        "max": 260
+      },
+      "pressure_bar": {
+        "min": 4,
+        "max": 15
+      }
+    }
+  },
+  "hyperparameter_tuning": {
+    "enabled": false,
+    "n_trials": 0,
+    "timeout": 0,
+    "search_space": {}
+  }
+}

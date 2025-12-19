@@ -1,78 +1,66 @@
-# Demo Dataset Reference
+## Demo Assets Overview
 
-Each folder under `demos/` contains a synthetic dataset plus an Airflow parameter payload (`params_*.json`) that can be used to trigger the `ml_dynamic_pipeline_with_ingestion_and_training` DAG. This document describes the schema of every dataset and explains why the accompanying model configuration is a good fit.
+This folder contains ready-made datasets and parameter presets that mirror the
+`driver_safe_param.json` structure so you can trigger the DAG or the standalone
+CLI without hand-crafting JSON payloads. Each scenario pairs a CSV dataset with
+the model family it was designed for.
 
----
+### Folder Layout
 
-## 1. Driver Safety (Classification)
+- `driver_safety/`: Original driver high-risk classification sample plus relaxed
+  validation settings (`driver_safety.csv`, `params_driver_safety*.json`).
+- `datasets/`: Synthetic multi-hundred-row CSVs for additional demos.
+- `params/`: JSON payloads that follow the same schema as `driver_safe_param.json`
+  and reference the datasets above.
 
-- **Files**: `driver_safety/driver_safety.csv`, `driver_safety/params_driver_safety.json`
-- **Training features**
-  - `weekly_miles`, `avg_speed_mph`, `incident_count`, `service_years`, `safety_score`.
-  - `driver_id` is an identifier only and is **not** used as a training feature.
-- **Label**
-  - `target_high_risk` — binary flag (1=high risk). This is the column referenced by the DAG’s `target_column`.
-- **Schema reference**
-  | Column | Type | Role |
-  | --- | --- | --- |
-  | `driver_id` | string | Identifier (ignored during training). |
-  | `weekly_miles` | float | Feature. |
-  | `avg_speed_mph` | float | Feature. |
-  | `incident_count` | int | Feature. |
-  | `service_years` | int | Feature. |
-  | `safety_score` | float | Feature. |
-  | `target_high_risk` | binary | **Label** |
-- **Model choice: `random_forest_classifier`**  
-  Driver risk depends on nonlinear interactions (e.g., high mileage + high average speed amplifies risk, but tenure and safety score temper it). Random forests capture those feature interactions and handle mixed numeric ranges without feature scaling, making them robust for this telemetry-like dataset. The hyperparameters (200 trees, depth 12, min leaf 2) balance interpretability and performance for ~400 rows.
+### Available Scenarios
 
----
+| Model | Dataset | Param file | Target column | Notes |
+| --- | --- | --- | --- | --- |
+| `random_forest_classifier` | `demos/datasets/customer_churn_demo.csv` | `demos/params/random_forest_classifier_customer_churn.json` | `churned` | Customer churn classification with categorical contract hints baked into numeric features. |
+| `logistic_regression` | `demos/datasets/lead_conversion_demo.csv` | `demos/params/logistic_regression_lead_conversion.json` | `converted` | Marketing lead conversion likelihood; good for showcasing interpretable coefficients. |
+| `linear_regression` | `demos/datasets/housing_prices_demo.csv` | `demos/params/linear_regression_housing_prices.json` | `price` | Housing price regression with continuous inputs (square feet, walk score, etc.). |
+| `random_forest_regressor` | `demos/datasets/energy_demand_demo.csv` | `demos/params/random_forest_regressor_energy.json` | `demand_mwh` | Regional energy demand forecasting; includes validation bounds for environmental metrics. |
+| `random_forest_classifier` (driver safety) | `demos/driver_safety/driver_safety.csv` | `demos/driver_safety/params_driver_safety*.json` | `target_high_risk` | Same dataset used in docs; the relaxed variant reduces validation strictness. |
 
-## 2. Consumer Loan Risk (Classification)
+### Using a Demo Param File
 
-- **Files**: `loan_risk/consumer_loan_risk.csv`, `loan_risk/params_loan_risk.json`
-- **Training features**
-  - `annual_income`, `credit_score`, `debt_to_income_ratio`, `current_loan_amount`, `late_payments`, `has_cosigner`.
-  - `application_id` is an identifier and excluded from the model matrix.
-- **Label**
-  - `loan_defaulted` — binary default indicator.
-- **Schema reference**
-  | Column | Type | Role |
-  | --- | --- | --- |
-  | `application_id` | string | Identifier (ignored). |
-  | `annual_income` | float | Feature. |
-  | `credit_score` | int | Feature. |
-  | `debt_to_income_ratio` | float | Feature. |
-  | `current_loan_amount` | float | Feature. |
-  | `late_payments` | int | Feature. |
-  | `has_cosigner` | binary | Feature. |
-  | `loan_defaulted` | binary | **Label** |
-- **Model choice: `logistic_regression`**  
-  Credit risk is often controlled by linear decision boundaries (e.g., higher DTI and lower credit scores increase default odds). Logistic regression provides calibrated probabilities, is easy to explain to business stakeholders, and adapts well to the relatively low-dimensional, mostly numeric feature space. Regularization (`C=0.8`) and `lbfgs` solver keep the model stable over ~450 rows while delivering interpretable coefficients.
+1. Pick a scenario from the table.
+2. Copy the corresponding JSON into your DAG run configuration (Airflow UI →
+   “Trigger DAG” → “Config”) or run locally:
 
----
+   ```bash
+   python -m pipeline_worker.cli.train_model \
+     --train-data-path demos/datasets/customer_churn_demo.csv \
+     --target-column churned \
+     --model-name random_forest_classifier \
+     --model-version 1 \
+     --hyperparameters "$(Get-Content demos/params/random_forest_classifier_customer_churn.json | jq '.hyperparameters')" \
+     --training-scenario demo_customer_churn \
+     --target-output-path ./artifacts/churn \
+     --test-size 0.25 \
+     --random-state 22
+   ```
 
-## 3. Regional Energy Demand (Regression)
+3. Adjust `target_output_path` inside the JSON if you want artifacts to land in
+   a different S3 bucket/folder.
 
-- **Files**: `energy_demand/regional_energy_load.csv`, `energy_demand/params_energy_demand.json`
-- **Training features**
-  - `avg_temperature_c`, `relative_humidity_pct`, `day_of_week`, `is_holiday`, `previous_day_load_mwh`, `renewable_share_pct`.
-  - `site_id` is metadata (ignored).
-- **Label**
-  - `total_load_mwh` — numeric energy demand target.
-- **Schema reference**
-  | Column | Type | Role |
-  | --- | --- | --- |
-  | `site_id` | string | Identifier (ignored). |
-  | `avg_temperature_c` | float | Feature. |
-  | `relative_humidity_pct` | float | Feature. |
-  | `day_of_week` | int | Feature. |
-  | `is_holiday` | binary | Feature. |
-  | `previous_day_load_mwh` | float | Feature. |
-  | `renewable_share_pct` | float | Feature. |
-  | `total_load_mwh` | float | **Label** |
-- **Model choice: `random_forest_regressor`**  
-  Energy demand exhibits nonlinear seasonality (temperature, humidity, day-of-week, holidays) plus lagged dependencies. A random forest regressor captures those nonlinear effects and handles feature interactions (e.g., temperature × humidity × holiday) without manual feature engineering. Depth 14 with 300 estimators is sufficient to model ~420 records while keeping variance in check via `min_samples_leaf=2`.
+### Validation Notes
 
----
+- Every param file declares `data_validation` rules so the validation task can
+  enforce minimum row counts and simple value ranges before training.
+- `ingestion_config.object_storage.enabled` is set to `false` because these
+  demos use local files. Swap to `true` and update the bucket/object key if you
+  upload the CSVs to S3.
 
-Use these references when crafting new demo cases or when you need to understand which fields must be present for validation and model training. You can always tailor the model name or hyperparameters in each `params_*.json` if you want to experiment with alternative estimators.***
+### Extending
+
+To add your own case:
+
+1. Drop a CSV into `demos/datasets/`.
+2. Duplicate one of the JSON files in `demos/params/` and update the fields
+   (especially `data_source`, `target_column`, and `model_name`).
+3. Reference the new JSON when triggering Airflow.
+
+This keeps demos consistent and lets teammates quickly showcase different model
+types without editing code. 
