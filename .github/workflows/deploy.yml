@@ -28,19 +28,13 @@ jobs:
 
             echo "==> Download model.pkl from S3: $S3_URI"
             mkdir -p models
-            aws s3 cp "$S3_URI" "models/model.pkl"
+            aws s3 cp "$S3_URI" "tmp/model.pkl"
 
             echo "==> Verify model file"
-            ls -lah models/model.pkl
+            ls -lah tmp/model.pkl
             
-            bentoml models import ./models/model.pkl --name model
-            bentoml models list
-            
-            # build bento
-            bentoml build
-            bentoml list
-            
-            # serve bento
-            bentoml serve model:latest --host 0.0.0.0 --port 3000
+            mv -f "/tmp/model.pkl" "/models/model.pkl"
+            sudo systemctl restart model
+            sudo systemctl status model --no-pager
             
             echo "==> Done"
