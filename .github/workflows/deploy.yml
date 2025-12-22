@@ -26,11 +26,6 @@ jobs:
             echo "==> Go to app dir: $APP_DIR"
             cd "$APP_DIR"
 
-            echo "==> Update code to latest main"
-            git fetch --all
-            git checkout main
-            git pull --rebase
-
             echo "==> Download model.pkl from S3: $S3_URI"
             mkdir -p models
             aws s3 cp "$S3_URI" "models/model.pkl"
