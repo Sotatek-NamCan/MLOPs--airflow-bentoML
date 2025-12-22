@@ -1,1 +1,51 @@
-model: "s3://my-bucket/models/my_model:2025-12-22_001"
+name: Deploy BentoML to EC2 (pull model.pkl from S3)
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: SSH deploy on EC2
+        uses: appleboy/ssh-action@v1.1.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}         # e.g. ubuntu / ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}           # private key PEM
+          port: ${{ secrets.EC2_PORT }}             # optional, set "22"
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            S3_URI="${{ secrets.MODEL_S3_URI }}"        # e.g. s3://bucket/path/model.pkl
+            APP_DIR="${{ secrets.EC2_APP_DIR }}"        # e.g. /opt/bento-app
+
+            echo "==> Go to app dir: $APP_DIR"
+            cd "$APP_DIR"
+
+            echo "==> Update code to latest main"
+            git fetch --all
+            git checkout main
+            git pull --rebase
+
+            echo "==> Download model.pkl from S3: $S3_URI"
+            mkdir -p models
+            aws s3 cp "$S3_URI" "models/model.pkl"
+
+            echo "==> Verify model file"
+            ls -lah models/model.pkl
+            
+            bentoml models import ./models/model.pkl --name model
+            bentoml models list
+            
+            # build bento
+            bentoml build
+            bentoml list
+            
+            # serve bento
+            bentoml serve model:latest --host 0.0.0.0 --port 3000
+            
+            echo "==> Done"
