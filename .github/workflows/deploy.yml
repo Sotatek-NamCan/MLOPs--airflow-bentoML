@@ -33,7 +33,7 @@ jobs:
             echo "==> Verify model file"
             ls -lah tmp/model.pkl
             
-            mv -f "/tmp/model.pkl" "/models/model.pkl"
+            mv -f "./tmp/model.pkl" "./models/model.pkl"
             sudo systemctl restart model
             sudo systemctl status model --no-pager
             
