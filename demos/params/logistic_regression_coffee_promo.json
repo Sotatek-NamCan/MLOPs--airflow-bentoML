@@ -1,0 +1,71 @@
+{
+  "data_source": "demos/datasets/coffee_promo_behavior_demo.json",
+  "data_format": "json",
+  "input_schema_version": "v1",
+  "model_name": "logistic_regression",
+  "model_version": "1",
+  "hyperparameters": {
+    "C": 1.2,
+    "solver": "lbfgs",
+    "max_iter": 400
+  },
+  "training_scenario": "demo_coffee_promo",
+  "target_output_path": "s3://demo-artifacts/models/coffee_purchase/",
+  "test_size": 0.2,
+  "random_state": 19,
+  "ingestion_config": {
+    "object_storage": {
+      "enabled": false
+    },
+    "file_path": "demos/datasets/coffee_promo_behavior_demo.json",
+    "file_extension": ".json"
+  },
+  "target_column": "bought_coffee",
+  "data_validation": {
+    "min_row_count": 300,
+    "required_columns": [
+      "discount_pct",
+      "time_of_day",
+      "is_raining",
+      "visits_last_30d",
+      "avg_spend_last_30d",
+      "bought_coffee"
+    ],
+    "non_null_columns": [
+      "discount_pct",
+      "time_of_day",
+      "is_raining",
+      "visits_last_30d",
+      "avg_spend_last_30d",
+      "bought_coffee"
+    ],
+    "value_ranges": {
+      "discount_pct": {
+        "min": 0,
+        "max": 40
+      },
+      "time_of_day": {
+        "min": 0,
+        "max": 23
+      },
+      "visits_last_30d": {
+        "min": 0,
+        "max": 40
+      },
+      "avg_spend_last_30d": {
+        "min": 0,
+        "max": 40
+      }
+    },
+    "allowed_values": {
+      "is_raining": [
+        0,
+        1
+      ],
+      "bought_coffee": [
+        0,
+        1
+      ]
+    }
+  }
+}

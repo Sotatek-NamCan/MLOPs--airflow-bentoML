@@ -1,0 +1,79 @@
+{
+  "data_source": "demos/datasets/restaurant_orders_daily_demo.csv",
+  "data_format": "csv",
+  "input_schema_version": "v1",
+  "model_name": "random_forest_regressor",
+  "model_version": "1",
+  "hyperparameters": {
+    "n_estimators": 250,
+    "max_depth": 12,
+    "min_samples_split": 4,
+    "min_samples_leaf": 2,
+    "random_state": 52
+  },
+  "training_scenario": "demo_restaurant_orders",
+  "target_output_path": "s3://demo-artifacts/models/restaurant_orders/",
+  "test_size": 0.2,
+  "random_state": 52,
+  "ingestion_config": {
+    "object_storage": {
+      "enabled": false
+    },
+    "file_path": "demos/datasets/restaurant_orders_daily_demo.csv",
+    "file_extension": ".csv"
+  },
+  "target_column": "orders_count",
+  "data_validation": {
+    "min_row_count": 200,
+    "required_columns": [
+      "day_of_week",
+      "is_weekend",
+      "promo",
+      "rain_mm",
+      "temp_c",
+      "nearby_event",
+      "orders_count"
+    ],
+    "non_null_columns": [
+      "day_of_week",
+      "is_weekend",
+      "promo",
+      "rain_mm",
+      "temp_c",
+      "nearby_event",
+      "orders_count"
+    ],
+    "value_ranges": {
+      "day_of_week": {
+        "min": 0,
+        "max": 6
+      },
+      "rain_mm": {
+        "min": 0,
+        "max": 40
+      },
+      "temp_c": {
+        "min": 10,
+        "max": 36
+      },
+      "orders_count": {
+        "min": 30,
+        "max": 250
+      }
+    },
+    "allowed_values": {
+      "is_weekend": [
+        0,
+        1
+      ],
+      "promo": [
+        0,
+        1
+      ],
+      "nearby_event": [
+        0,
+        1
+      ]
+    }
+  }
+}
