@@ -6,12 +6,22 @@ import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
+import math
 
 import pandas as pd
 import mlflow
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LogisticRegression, LinearRegression
-from sklearn.metrics import accuracy_score, mean_squared_error
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    mean_squared_error,
+    mean_absolute_error,
+    r2_score,
+    explained_variance_score,
+)
 from sklearn.model_selection import train_test_split
 
 from pipeline_worker.storage import (
@@ -202,19 +212,31 @@ def train_and_save_model(
             model.fit(X_train, y_train)
 
             # Evaluate
-            metric_name: str
-            metric_value: float
-            if hasattr(model, "predict_proba") or "classifier" in model_name.lower():
-                y_pred = model.predict(X_test)
-                metric_value = accuracy_score(y_test, y_pred)
-                metric_name = "accuracy"
-                print(f"[Training] Model {model_name} v{model_version} Accuracy: {metric_value:.4f}")
+            y_pred = model.predict(X_test)
+            metrics: Dict[str, float] = {}
+            is_classifier = hasattr(model, "predict_proba") or "classifier" in model_name.lower()
+            if is_classifier:
+                metrics["accuracy"] = accuracy_score(y_test, y_pred)
+                metrics["precision"] = precision_score(y_test, y_pred, average="weighted", zero_division=0)
+                metrics["recall"] = recall_score(y_test, y_pred, average="weighted", zero_division=0)
+                metrics["f1"] = f1_score(y_test, y_pred, average="weighted", zero_division=0)
+                print(
+                    "[Training] Classification metrics "
+                    + ", ".join(f"{name}: {value:.4f}" for name, value in metrics.items())
+                )
             else:
-                y_pred = model.predict(X_test)
-                metric_value = mean_squared_error(y_test, y_pred)
-                metric_name = "mse"
-                print(f"[Training] Model {model_name} v{model_version} MSE: {metric_value:.4f}")
-            mlflow.log_metric(metric_name, metric_value)
+                mse = mean_squared_error(y_test, y_pred)
+                metrics["mse"] = mse
+                metrics["rmse"] = math.sqrt(mse)
+                metrics["mae"] = mean_absolute_error(y_test, y_pred)
+                metrics["r2"] = r2_score(y_test, y_pred)
+                metrics["explained_variance"] = explained_variance_score(y_test, y_pred)
+                print(
+                    "[Training] Regression metrics "
+                    + ", ".join(f"{name}: {value:.4f}" for name, value in metrics.items())
+                )
+            for name, value in metrics.items():
+                mlflow.log_metric(name, float(value))
 
             # Determine output destination
             output_bucket: Optional[str] = None

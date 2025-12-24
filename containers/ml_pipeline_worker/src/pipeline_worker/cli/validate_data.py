@@ -11,25 +11,13 @@ from typing import Any, Dict
 import pandas as pd
 
 from pipeline_worker.artifacts import ensure_local_artifact, upload_local_artifact
+from pipeline_worker.datasets import resolve_dataset_extension
 from pipeline_worker.ingestion import DataIngestorFactory
 from pipeline_worker.validation import (
     DataValidationError,
     ValidationConfig,
     validate_dataframe,
 )
-
-
-def _resolve_extension(dataset_path: Path, data_format: str | None) -> str:
-    if data_format:
-        normalized = data_format.strip()
-        normalized = normalized.lstrip(".")
-        return f".{normalized}" if normalized else ""
-    suffix = dataset_path.suffix
-    if suffix:
-        return suffix
-    raise SystemExit(
-        "Unable to determine dataset format automatically. Please set --data-format."
-    )
 
 
 def _parse_validation_config(value: str) -> Dict[str, Any]:
@@ -66,7 +54,10 @@ def main() -> None:
 
     args = parser.parse_args()
     dataset_path = ensure_local_artifact(args.dataset_path)
-    extension = _resolve_extension(dataset_path, args.data_format)
+    try:
+        extension = resolve_dataset_extension(dataset_path, args.data_format)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     ingestor = DataIngestorFactory.get_data_ingestor(extension)
     dataframe = ingestor.ingest(dataset_path)
 

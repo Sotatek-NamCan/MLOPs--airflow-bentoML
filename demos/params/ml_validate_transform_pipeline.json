@@ -1,0 +1,162 @@
+{
+  "data_format": "csv",
+  "target_column": "target",
+  "data_cleaning": {
+    "drop_columns": [
+      "timestamp"
+    ],
+    "deduplicate": true,
+    "column_order": [
+      "site_id",
+      "temperature_c",
+      "humidity_pct",
+      "wind_speed_mps",
+      "consumption_kwh",
+      "target"
+    ],
+    "missing_values": {
+      "numeric_strategy": "median",
+      "categorical_strategy": "mode"
+    },
+    "outliers": {
+      "method": "iqr",
+      "iqr_factor": 1.5,
+      "columns": [
+        "temperature_c",
+        "humidity_pct",
+        "wind_speed_mps",
+        "consumption_kwh"
+      ]
+    },
+    "transformations": [
+      {
+        "type": "standardize",
+        "columns": [
+          "temperature_c",
+          "humidity_pct",
+          "wind_speed_mps"
+        ]
+      },
+      {
+        "type": "log1p",
+        "columns": [
+          "consumption_kwh"
+        ]
+      }
+    ]
+  },
+  "data_validation": {
+    "min_row_count": 10,
+    "expect_columns": [
+      "site_id",
+      "temperature_c",
+      "humidity_pct",
+      "wind_speed_mps",
+      "consumption_kwh",
+      "target"
+    ],
+    "target_category_values": [
+      "normal",
+      "high"
+    ],
+    "max_null_ratio": 0.05
+  },
+  "data_profiling": {
+    "top_value_count": 5,
+    "include_percentiles": [
+      0.25,
+      0.5,
+      0.75,
+      0.9
+    ]
+  },
+  "data_visualization": {
+    "max_numeric_charts": 6,
+    "max_categorical_charts": 4,
+    "top_value_count": 5,
+    "plot_format": "png"
+  }
+}
+
+
+
+{
+ "run_artifact_base": "energy-usage-demo",
+ "data_format": "csv",
+  "target_column": "target",
+  "data_cleaning": {
+    "drop_columns": [
+      "timestamp"
+    ],
+    "deduplicate": true,
+    "column_order": [
+      "site_id",
+      "temperature_c",
+      "humidity_pct",
+      "wind_speed_mps",
+      "consumption_kwh",
+      "target"
+    ],
+    "missing_values": {
+      "numeric_strategy": "median",
+      "categorical_strategy": "mode"
+    },
+    "outliers": {
+      "method": "iqr",
+      "iqr_factor": 1.5,
+      "columns": [
+        "temperature_c",
+        "humidity_pct",
+        "wind_speed_mps",
+        "consumption_kwh"
+      ]
+    },
+    "transformations": [
+      {
+        "type": "standardize",
+        "columns": [
+          "temperature_c",
+          "humidity_pct",
+          "wind_speed_mps"
+        ]
+      },
+      {
+        "type": "log1p",
+        "columns": [
+          "consumption_kwh"
+        ]
+      }
+    ]
+  },
+  "data_validation": {
+    "min_row_count": 10,
+    "expect_columns": [
+      "site_id",
+      "temperature_c",
+      "humidity_pct",
+      "wind_speed_mps",
+      "consumption_kwh",
+      "target"
+    ],
+    "target_category_values": [
+      "normal",
+      "high"
+    ],
+    "max_null_ratio": 0.05
+  },
+  "data_profiling": {
+    "top_value_count": 5,
+    "include_percentiles": [
+      0.25,
+      0.5,
+      0.75,
+      0.9
+    ]
+  },
+  "data_visualization": {
+    "max_numeric_charts": 6,
+    "max_categorical_charts": 4,
+    "top_value_count": 5,
+    "plot_format": "png"
+  }
+}

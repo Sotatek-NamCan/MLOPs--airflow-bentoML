@@ -1,0 +1,17 @@
+{
+  "data_source": "/opt/pipeline/demos/data/energy_usage_classification.csv",
+  "data_format": "csv",
+  "input_schema_version": "v1",
+  "ingestion_config": {
+    "drop_columns": [
+      "timestamp"
+    ],
+    "deduplicate": true,
+    "convert_types": {
+      "temperature_c": "float",
+      "humidity_pct": "float",
+      "wind_speed_mps": "float",
+      "consumption_kwh": "float"
+    }
+  }
+}
