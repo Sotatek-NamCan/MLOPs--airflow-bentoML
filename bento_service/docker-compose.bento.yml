@@ -7,11 +7,9 @@ services:
     env_file:
       - bento_service/.envbento
     environment:
-      # Expose Bento metrics endpoint on port 3000 (also used for inference API)
       BENTOML_CONFIG: ""
     ports:
       - "3000:3000"
-      - "3001:3001"
     networks:
       - bento_monitoring
 
