@@ -1,30 +1,41 @@
+from __future__ import annotations
+
+import os
+from typing import Any, List
+
 import numpy as np
 import bentoml
 from bentoml.io import JSON
+from pydantic import BaseModel
 
-model_ref = bentoml.models.get("model:latest")
-runner = bentoml.sklearn.get(model_ref).to_runner()
+
+MODEL_TAG = os.getenv("BENTOML_MODEL_TAG", "model:latest")
+MODEL_REF = bentoml.sklearn.get(MODEL_TAG)
+MODEL_RUNNER = MODEL_REF.to_runner()
+
 svc = bentoml.Service(
-    "model",
-    runners=[runner],
-    traffic={
-        "timeout": 30,
-        "max_request_size": 1048576,
-    },
-    config=bentoml.ConfigDict(
-        logging={"inference": {"enabled": True, "sample_rate": 1.0}},
-        tracing={"sample_rate": 1.0},
-        monitoring={
-            "enable_prometheus": True,
-            "prometheus_namespace": "bento",
-            "prometheus_port": 3000,
-        },
-    ),
+    name=os.getenv("BENTO_SERVICE_NAME", "model"),
+    runners=[MODEL_RUNNER],
+    traffic={"timeout": 30},
+    http={"port": 3000},
+    metrics={"enabled": True, "namespace": "bento"},
+    tracing={"sample_rate": 1.0},
 )
 
 
-@svc.api(input=JSON(), output=JSON())
-async def predict(payload):
-    X = np.array(payload["data"])
-    y = await runner.predict.async_run(X)
-    return {"pred": y.tolist()}
+class PredictIn(BaseModel):
+    data: List[List[float]]
+
+
+class PredictOut(BaseModel):
+    pred: Any
+
+
+@svc.api(
+    input=JSON(pydantic_model=PredictIn),
+    output=JSON(pydantic_model=PredictOut),
+)
+async def predict(payload: PredictIn) -> PredictOut:
+    X = np.asarray(payload.data)
+    y = await MODEL_RUNNER.predict.async_run(X)
+    return PredictOut(pred=y.tolist())

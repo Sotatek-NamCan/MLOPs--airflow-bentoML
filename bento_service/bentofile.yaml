@@ -6,3 +6,5 @@ python:
     - bentoml
     - numpy
     - scikit-learn
+    - boto3
+    - dotenv
