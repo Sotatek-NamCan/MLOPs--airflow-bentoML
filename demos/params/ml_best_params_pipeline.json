@@ -1,5 +1,5 @@
 {
-   "run_artifact_base": "energy-usage-demo",
+  "run_artifact_base": "energy-usage-demo",
   "target_column": "target",
   "model_name": "random_forest_classifier",
   "hyperparameters": {
