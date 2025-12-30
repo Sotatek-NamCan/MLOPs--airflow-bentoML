@@ -230,31 +230,20 @@ def ingest_data(
     Load a dataset exclusively from object storage.
     Returns a tuple of (dataframe, local_file_path).
     """
-    storage_cfg = config.get("object_storage", {}) or {}
-    dataset_key = storage_cfg.get("object_key") or os.getenv("OBJECT_STORAGE_DATASET_KEY")
-    bucket_override = (
-        storage_cfg.get("bucket")
-        or os.getenv("OBJECT_STORAGE_DATASET_BUCKET")
-        or os.getenv("OBJECT_STORAGE_BUCKET")
-    )
-    if not dataset_key:
-        file_hint = config.get("file_path")
-        bucket_from_uri, key_from_uri = _parse_s3_uri(str(file_hint)) if file_hint else (None, None)
-        if key_from_uri:
-            dataset_key = key_from_uri
-            if not bucket_override and bucket_from_uri:
-                bucket_override = bucket_from_uri
-    if not dataset_key:
+    file_hint = config.get("file_path")
+    bucket_from_uri, key_from_uri = _parse_s3_uri(str(file_hint)) if file_hint else (None, None)
+    if not bucket_from_uri or not key_from_uri:
         raise ValueError(
-            "Object storage ingestion requires 'object_storage.object_key' "
-            "or OBJECT_STORAGE_DATASET_KEY."
+            "Object storage ingestion requires file_path to be a full s3://<bucket>/<key> URI."
         )
+    dataset_key = key_from_uri
+    bucket_override = bucket_from_uri
 
     extract_dir = config.get("zip_extract_dir")
     if extract_dir and not Path(extract_dir).is_absolute():
         extract_dir = str(project_root / extract_dir)
 
-    cache_dir = _resolve_cache_dir(storage_cfg.get("cache_dir"), project_root=project_root)
+    cache_dir = _resolve_cache_dir(config.get("cache_dir"), project_root=project_root)
     relative_key = Path(_strip_leading_slash(dataset_key))
     resolved_path = cache_dir / relative_key
     resolved_path.parent.mkdir(parents=True, exist_ok=True)

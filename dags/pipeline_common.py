@@ -2,36 +2,11 @@ from __future__ import annotations
 
 import json
 import os
-import socket
-import string
 from datetime import datetime
 from typing import Iterable, Sequence
 
 from airflow.models.param import Param
 from airflow.providers.docker.operators.docker import DockerOperator
-
-
-def _looks_like_container_id(value: str) -> bool:
-    stripped = value.strip()
-    return bool(stripped) and len(stripped) in (12, 64) and all(ch in string.hexdigits for ch in stripped)
-
-
-def _log_stream_host() -> str:
-    override = os.environ.get("ML_PIPELINE_WORKER_LOG_HOST")
-    if override:
-        return override
-    env_candidate = os.environ.get("HOSTNAME") or socket.getfqdn()
-    if env_candidate and not _looks_like_container_id(env_candidate):
-        return env_candidate
-    return os.environ.get("ML_PIPELINE_WORKER_SERVICE_HOST", "airflow-worker")
-
-
-LOG_STREAM_HOST = _log_stream_host()
-
-
-def literal_template(value: str) -> str:
-    """Wrap a literal string so Airflow templating doesn't treat it as a file path."""
-    return f"{{{{ {json.dumps(value)} }}}}"
 
 
 def stringify_command(value: Sequence | str | None):
@@ -53,15 +28,16 @@ def stringify_command(value: Sequence | str | None):
 
 
 class PipelineDockerOperator(DockerOperator):
-    """DockerOperator variant that keeps Airflow hostnames stable for log streaming."""
+    """DockerOperator variant that normalizes command/entrypoint payloads."""
+
+    template_fields = tuple(
+        field for field in DockerOperator.template_fields if field != "environment"
+    )
 
     def pre_execute(self, context):
         self.command = stringify_command(self.command)
         if self.entrypoint is not None:
             self.entrypoint = stringify_command(self.entrypoint)
-        ti = context.get("ti")
-        if ti and not getattr(ti, "hostname", None):
-            ti.hostname = LOG_STREAM_HOST
         return super().pre_execute(context)
 
 
@@ -92,31 +68,8 @@ BASE_ENV = env_subset(
         "MLFLOW_EXPERIMENT_NAME",
     ]
 )
-BASE_ENV["PIPELINE_PROJECT_ROOT"] = literal_template(CONTAINER_PROJECT_DIR)
-BASE_ENV["PIPELINE_ENV_FILE"] = literal_template(f"{CONTAINER_PROJECT_DIR}/.env")
-
-ARTIFACT_BUCKET = os.environ.get("ML_PIPELINE_ARTIFACT_BUCKET") or os.environ.get("OBJECT_STORAGE_BUCKET")
-ARTIFACT_PREFIX = os.environ.get("ML_PIPELINE_ARTIFACT_PREFIX", "ml-pipeline-runs")
-if not ARTIFACT_BUCKET:
-    raise RuntimeError(
-        "Object storage bucket is required. Set ML_PIPELINE_ARTIFACT_BUCKET or OBJECT_STORAGE_BUCKET."
-    )
-ARTIFACT_BASE_PREFIX = f"s3://{ARTIFACT_BUCKET}/{ARTIFACT_PREFIX.strip('/')}"
-RUN_ARTIFACT_BASE = (
-    f"{ARTIFACT_BASE_PREFIX}/{{{{ dag_run.conf.get('run_artifact_base') or dag_run.run_id or ts_nodash }}}}"
-)
-INGESTED_DATASET_URI = f"{RUN_ARTIFACT_BASE}/ingested/dataset.csv"
-CLEANED_DATASET_URI = f"{RUN_ARTIFACT_BASE}/validation/cleaned_dataset.csv"
-CLEANING_SUMMARY_URI = f"{RUN_ARTIFACT_BASE}/validation/cleaning_summary.json"
-DATA_PROFILE_URI = f"{RUN_ARTIFACT_BASE}/validation/profile_summary.json"
-DATA_VISUALIZATION_URI = f"{RUN_ARTIFACT_BASE}/validation/visualizations.zip"
-VALIDATION_REPORT_URI = f"{RUN_ARTIFACT_BASE}/validation/summary.json"
-TRAINING_BASE_URI = f"{RUN_ARTIFACT_BASE}/training"
-TRAINED_MODEL_URI = (
-    f"{TRAINING_BASE_URI}/models/{{{{ params.model_name }}}}_v{{{{ params.model_version }}}}/"
-    f"{{{{ params.model_name }}}}_v{{{{ params.model_version }}}}.pkl"
-)
-TUNING_RESULTS_URI = f"{RUN_ARTIFACT_BASE}/tuning/best_params.json"
+BASE_ENV["PIPELINE_PROJECT_ROOT"] = CONTAINER_PROJECT_DIR
+BASE_ENV["PIPELINE_ENV_FILE"] = f"{CONTAINER_PROJECT_DIR}/.env"
 
 BASE_OPERATOR_KWARGS = {
     "image": PIPELINE_IMAGE,
@@ -227,16 +180,6 @@ def select_params(*keys: str) -> dict[str, Param]:
 
 __all__ = [
     "CONTAINER_PROJECT_DIR",
-    "RUN_ARTIFACT_BASE",
-    "INGESTED_DATASET_URI",
-    "CLEANED_DATASET_URI",
-    "CLEANING_SUMMARY_URI",
-    "DATA_PROFILE_URI",
-    "DATA_VISUALIZATION_URI",
-    "VALIDATION_REPORT_URI",
-    "TRAINING_BASE_URI",
-    "TRAINED_MODEL_URI",
-    "TUNING_RESULTS_URI",
     "PIPELINE_PARAMS",
     "select_params",
     "DEFAULT_DAG_KWARGS",

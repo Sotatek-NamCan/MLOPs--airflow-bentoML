@@ -2,13 +2,10 @@ from __future__ import annotations
 
 from airflow import DAG
 
-from pipeline_common import (
-    CONTAINER_PROJECT_DIR,
-    DEFAULT_DAG_KWARGS,
-    INGESTED_DATASET_URI,
-    pipeline_task,
-    select_params,
-)
+from pipeline_common import CONTAINER_PROJECT_DIR, DEFAULT_DAG_KWARGS, pipeline_task, select_params
+
+
+INGESTED_DATASET_URI = "{{ dag_run.conf.get('ingested_dataset_uri') }}"
 
 
 with DAG(

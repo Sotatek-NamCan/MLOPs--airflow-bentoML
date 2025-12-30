@@ -1,0 +1,153 @@
+{
+  "_note": "Use the object under each DAG id as the Airflow run config.",
+  "ml_ingest_data_pipeline_1": {
+    "data_source": "s3://cpnam-lab/datasets/iris.csv",
+    "data_format": "csv",
+    "input_schema_version": "v1",
+    "ingestion_config": {
+      "file_extension": ".csv",
+      "cache_dir": "data/cache/iris"
+    },
+    "ingested_dataset_uri": "s3://cpnam-lab/artifacts/iris/ingested/iris.csv"
+  },
+  "ml_validate_transform_pipeline_2": {
+    "data_format": "csv",
+    "target_column": "species",
+    "data_cleaning": {
+      "drop_columns": [],
+      "deduplicate": true,
+      "column_order": [
+        "sepal_length",
+        "sepal_width",
+        "petal_length",
+        "petal_width",
+        "species"
+      ],
+      "missing_values": {
+        "numeric_strategy": "median",
+        "categorical_strategy": "mode",
+        "categorical_fill_value": "missing"
+      },
+      "outliers": {
+        "method": "iqr",
+        "iqr_factor": 1.5,
+        "columns": [
+          "sepal_length",
+          "sepal_width",
+          "petal_length",
+          "petal_width"
+        ]
+      },
+      "transformations": []
+    },
+    "data_validation": {
+      "min_row_count": 50,
+      "required_columns": [
+        "sepal_length",
+        "sepal_width",
+        "petal_length",
+        "petal_width",
+        "species"
+      ],
+      "non_null_columns": [
+        "sepal_length",
+        "sepal_width",
+        "petal_length",
+        "petal_width",
+        "species"
+      ],
+      "value_ranges": {
+        "sepal_length": {
+          "min": 0
+        },
+        "sepal_width": {
+          "min": 0
+        },
+        "petal_length": {
+          "min": 0
+        },
+        "petal_width": {
+          "min": 0
+        }
+      },
+      "allowed_values": {
+        "species": [
+          "setosa",
+          "versicolor",
+          "virginica"
+        ]
+      }
+    },
+    "data_profiling": {
+      "top_value_count": 5,
+      "include_percentiles": [
+        0.25,
+        0.5,
+        0.75
+      ]
+    },
+    "data_visualization": {
+      "max_numeric_charts": 10,
+      "max_categorical_charts": 6,
+      "plot_format": "png"
+    },
+    "ingested_dataset_uri": "s3://cpnam-lab/artifacts/iris/ingested/iris.csv",
+    "cleaned_dataset_uri": "s3://cpnam-lab/artifacts/iris/cleaned/iris.csv",
+    "cleaning_summary_uri": "s3://cpnam-lab/artifacts/iris/reports/cleaning_summary.json",
+    "data_profile_uri": "s3://cpnam-lab/artifacts/iris/reports/profile_summary.json",
+    "data_visualization_uri": "s3://cpnam-lab/artifacts/iris/reports/visualizations.zip",
+    "validation_report_uri": "s3://cpnam-lab/artifacts/iris/reports/validation_summary.json"
+  },
+  "ml_best_params_pipeline_3": {
+    "target_column": "species",
+    "model_name": "logistic_regression",
+    "hyperparameters": {
+      "C": 1.0,
+      "solver": "lbfgs",
+      "max_iter": 200,
+      "multi_class": "auto"
+    },
+    "hyperparameter_tuning": {
+      "enabled": true,
+      "n_trials": 20,
+      "timeout": 600,
+      "search_space": {
+        "C": {
+          "type": "float",
+          "low": 0.001,
+          "high": 10,
+          "log": true
+        },
+        "max_iter": {
+          "type": "int",
+          "low": 100,
+          "high": 500,
+          "step": 50
+        }
+      }
+    },
+    "test_size": 0.2,
+    "random_state": 42,
+    "ingested_dataset_uri": "s3://cpnam-lab/artifacts/iris/ingested/iris.csv",
+    "tuning_results_uri": "s3://cpnam-lab/artifacts/iris/hpo/best_params.json"
+  },
+  "ml_train_and_save_pipeline_4": {
+    "target_column": "species",
+    "model_name": "logistic_regression",
+    "model_version": "1",
+    "hyperparameters": {
+      "C": 1.0,
+      "solver": "lbfgs",
+      "max_iter": 200,
+      "multi_class": "auto"
+    },
+    "training_scenario": "baseline",
+    "target_output_path": "s3://cpnam-lab/models/iris/",
+    "test_size": 0.2,
+    "random_state": 42,
+    "ingested_dataset_uri": "s3://cpnam-lab/artifacts/iris/ingested/iris.csv",
+    "training_base_uri": "s3://cpnam-lab/artifacts/iris",
+    "trained_model_uri": "s3://cpnam-lab/artifacts/iris/models/logistic_regression_v1/logistic_regression_v1.pkl",
+    "tuning_results_uri": "s3://cpnam-lab/artifacts/iris/hpo/best_params.json"
+  }
+}

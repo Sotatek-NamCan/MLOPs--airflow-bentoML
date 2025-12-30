@@ -1,0 +1,135 @@
+{
+  "_note": "Use the object under each DAG id as the Airflow run config.",
+  "ml_ingest_data_pipeline_1": {
+    "data_source": "s3://cpnam-lab/datasets/insurance.csv",
+    "data_format": "csv",
+    "input_schema_version": "v1",
+    "ingestion_config": {
+      "file_extension": ".csv",
+      "cache_dir": "data/cache/insurance"
+    },
+    "ingested_dataset_uri": "s3://cpnam-lab/artifacts/insurance/ingested/insurance.csv"
+  },
+  "ml_validate_transform_pipeline_2": {
+    "data_format": "csv",
+    "target_column": "charges",
+    "data_cleaning": {
+      "drop_columns": [
+        "sex",
+        "smoker",
+        "region"
+      ],
+      "deduplicate": true,
+      "column_order": [
+        "age",
+        "bmi",
+        "children",
+        "charges"
+      ],
+      "missing_values": {
+        "numeric_strategy": "median",
+        "categorical_strategy": "mode",
+        "categorical_fill_value": "missing"
+      },
+      "outliers": {
+        "method": "iqr",
+        "iqr_factor": 1.5,
+        "columns": [
+          "age",
+          "bmi",
+          "children"
+        ]
+      },
+      "transformations": []
+    },
+    "data_validation": {
+      "min_row_count": 100,
+      "required_columns": [
+        "age",
+        "bmi",
+        "children",
+        "charges"
+      ],
+      "non_null_columns": [
+        "age",
+        "bmi",
+        "children",
+        "charges"
+      ],
+      "value_ranges": {
+        "age": {
+          "min": 0
+        },
+        "bmi": {
+          "min": 0
+        },
+        "children": {
+          "min": 0
+        },
+        "charges": {
+          "min": 0
+        }
+      }
+    },
+    "data_profiling": {
+      "top_value_count": 5,
+      "include_percentiles": [
+        0.25,
+        0.5,
+        0.75
+      ]
+    },
+    "data_visualization": {
+      "max_numeric_charts": 10,
+      "max_categorical_charts": 6,
+      "plot_format": "png"
+    },
+    "ingested_dataset_uri": "s3://cpnam-lab/artifacts/insurance/ingested/insurance.csv",
+    "cleaned_dataset_uri": "s3://cpnam-lab/artifacts/insurance/cleaned/insurance.csv",
+    "cleaning_summary_uri": "s3://cpnam-lab/artifacts/insurance/reports/cleaning_summary.json",
+    "data_profile_uri": "s3://cpnam-lab/artifacts/insurance/reports/profile_summary.json",
+    "data_visualization_uri": "s3://cpnam-lab/artifacts/insurance/reports/visualizations.zip",
+    "validation_report_uri": "s3://cpnam-lab/artifacts/insurance/reports/validation_summary.json"
+  },
+  "ml_best_params_pipeline_3": {
+    "target_column": "charges",
+    "model_name": "linear_regression",
+    "hyperparameters": {
+      "fit_intercept": true
+    },
+    "hyperparameter_tuning": {
+      "enabled": true,
+      "n_trials": 20,
+      "timeout": 600,
+      "search_space": {
+        "fit_intercept": {
+          "type": "categorical",
+          "choices": [
+            true,
+            false
+          ]
+        }
+      }
+    },
+    "test_size": 0.2,
+    "random_state": 42,
+    "ingested_dataset_uri": "s3://cpnam-lab/artifacts/insurance/ingested/insurance.csv",
+    "tuning_results_uri": "s3://cpnam-lab/artifacts/insurance/hpo/best_params.json"
+  },
+  "ml_train_and_save_pipeline_4": {
+    "target_column": "charges",
+    "model_name": "linear_regression",
+    "model_version": "1",
+    "hyperparameters": {
+      "fit_intercept": true
+    },
+    "training_scenario": "baseline",
+    "target_output_path": "s3://cpnam-lab/models/insurance/",
+    "test_size": 0.2,
+    "random_state": 42,
+    "ingested_dataset_uri": "s3://cpnam-lab/artifacts/insurance/ingested/insurance.csv",
+    "training_base_uri": "s3://cpnam-lab/artifacts/insurance",
+    "trained_model_uri": "s3://cpnam-lab/artifacts/insurance/models/linear_regression_v1/linear_regression_v1.pkl",
+    "tuning_results_uri": "s3://cpnam-lab/artifacts/insurance/hpo/best_params.json"
+  }
+}
