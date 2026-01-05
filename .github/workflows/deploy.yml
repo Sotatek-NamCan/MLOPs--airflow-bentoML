@@ -46,7 +46,7 @@ jobs:
             . .venv/bin/activate
             pip install -r requirements.txt
 
-            python import_model_from_s3.py \
+            python import_model.py \
               --s3-uri "${S3_URI}" \
               --model-name "${MODEL_NAME}" \
               --model-version "${MODEL_VERSION}"
