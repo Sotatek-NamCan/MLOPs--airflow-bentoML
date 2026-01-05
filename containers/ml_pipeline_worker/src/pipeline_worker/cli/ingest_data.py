@@ -33,10 +33,10 @@ def _parse_json(value: str) -> Dict[str, Any]:
 
 def _build_ingestion_config(args: argparse.Namespace, ingestion_cfg: Dict[str, Any]) -> Dict[str, Any]:
     config: Dict[str, Any] = {
-        "object_storage": ingestion_cfg.get("object_storage", {}) or {},
         "file_path": ingestion_cfg.get("file_path"),
         "file_extension": ingestion_cfg.get("file_extension"),
         "zip_extract_dir": ingestion_cfg.get("zip_extract_dir"),
+        "cache_dir": ingestion_cfg.get("cache_dir"),
     }
 
     if not config["file_extension"] and args.data_format:
@@ -45,21 +45,6 @@ def _build_ingestion_config(args: argparse.Namespace, ingestion_cfg: Dict[str, A
 
     if not config["file_path"]:
         config["file_path"] = args.data_source
-
-    data_source = (args.data_source or "").strip()
-    if data_source.lower().startswith("s3://"):
-        # Split s3://bucket/key to populate object storage information automatically
-        path_no_scheme = data_source[len("s3://") :]
-        bucket, _, object_key = path_no_scheme.partition("/")
-        if bucket:
-            config.setdefault("object_storage", {})
-            config["object_storage"].update(
-                {
-                    "enabled": True,
-                    "bucket": bucket,
-                    "object_key": object_key or "",
-                }
-            )
 
     return config
 

@@ -2,17 +2,15 @@ from __future__ import annotations
 
 from airflow import DAG
 
-from pipeline_common import (
-    CLEANED_DATASET_URI,
-    CLEANING_SUMMARY_URI,
-    DATA_PROFILE_URI,
-    DATA_VISUALIZATION_URI,
-    DEFAULT_DAG_KWARGS,
-    INGESTED_DATASET_URI,
-    VALIDATION_REPORT_URI,
-    pipeline_task,
-    select_params,
-)
+from pipeline_common import DEFAULT_DAG_KWARGS, pipeline_task, select_params
+
+
+INGESTED_DATASET_URI = "{{ dag_run.conf.get('ingested_dataset_uri') }}"
+CLEANED_DATASET_URI = "{{ dag_run.conf.get('cleaned_dataset_uri') }}"
+CLEANING_SUMMARY_URI = "{{ dag_run.conf.get('cleaning_summary_uri') }}"
+DATA_PROFILE_URI = "{{ dag_run.conf.get('data_profile_uri') }}"
+DATA_VISUALIZATION_URI = "{{ dag_run.conf.get('data_visualization_uri') }}"
+VALIDATION_REPORT_URI = "{{ dag_run.conf.get('validation_report_uri') }}"
 
 
 with DAG(

@@ -1,0 +1,173 @@
+{
+  "_note": "Use the object under each DAG id as the Airflow run config.",
+  "ml_ingest_data_pipeline_1": {
+    "data_source": "s3://cpnam-lab/datasets/house.csv",
+    "data_format": "csv",
+    "input_schema_version": "v1",
+    "ingestion_config": {
+      "file_extension": ".csv",
+      "cache_dir": "data/cache/house"
+    },
+    "ingested_dataset_uri": "s3://cpnam-lab/artifacts/house/ingested/house.csv"
+  },
+  "ml_validate_transform_pipeline_2": {
+    "data_format": "csv",
+    "target_column": "median_house_value",
+    "data_cleaning": {
+      "drop_columns": [
+        "ocean_proximity"
+      ],
+      "deduplicate": true,
+      "column_order": [
+        "longitude",
+        "latitude",
+        "housing_median_age",
+        "total_rooms",
+        "total_bedrooms",
+        "population",
+        "households",
+        "median_income",
+        "median_house_value"
+      ],
+      "missing_values": {
+        "numeric_strategy": "median",
+        "categorical_strategy": "mode",
+        "categorical_fill_value": "missing"
+      },
+      "outliers": {
+        "method": "iqr",
+        "iqr_factor": 1.5,
+        "columns": [
+          "total_rooms",
+          "population",
+          "median_income"
+        ]
+      },
+      "transformations": []
+    },
+    "data_validation": {
+      "min_row_count": 1000,
+      "required_columns": [
+        "longitude",
+        "latitude",
+        "housing_median_age",
+        "total_rooms",
+        "total_bedrooms",
+        "population",
+        "households",
+        "median_income",
+        "median_house_value"
+      ],
+      "non_null_columns": [
+        "longitude",
+        "latitude",
+        "housing_median_age",
+        "total_rooms",
+        "total_bedrooms",
+        "population",
+        "households",
+        "median_income",
+        "median_house_value"
+      ],
+      "value_ranges": {
+        "longitude": {
+          "min": -180,
+          "max": 180
+        },
+        "latitude": {
+          "min": -90,
+          "max": 90
+        },
+        "total_bedrooms": {
+          "min": 0
+        },
+        "median_income": {
+          "min": 0
+        },
+        "median_house_value": {
+          "min": 0
+        }
+      }
+    },
+    "data_profiling": {
+      "top_value_count": 5,
+      "include_percentiles": [
+        0.25,
+        0.5,
+        0.75
+      ]
+    },
+    "data_visualization": {
+      "max_numeric_charts": 10,
+      "max_categorical_charts": 6,
+      "plot_format": "png"
+    },
+    "ingested_dataset_uri": "s3://cpnam-lab/artifacts/house/ingested/house.csv",
+    "cleaned_dataset_uri": "s3://cpnam-lab/artifacts/house/cleaned/house.csv",
+    "cleaning_summary_uri": "s3://cpnam-lab/artifacts/house/reports/cleaning_summary.json",
+    "data_profile_uri": "s3://cpnam-lab/artifacts/house/reports/profile_summary.json",
+    "data_visualization_uri": "s3://cpnam-lab/artifacts/house/reports/visualizations.zip",
+    "validation_report_uri": "s3://cpnam-lab/artifacts/house/reports/validation_summary.json"
+  },
+  "ml_best_params_pipeline_3": {
+    "target_column": "median_house_value",
+    "model_name": "random_forest_regressor",
+    "hyperparameters": {
+      "n_estimators": 300,
+      "max_depth": 12,
+      "min_samples_split": 2,
+      "min_samples_leaf": 1
+    },
+    "hyperparameter_tuning": {
+      "enabled": true,
+      "n_trials": 20,
+      "timeout": 600,
+      "search_space": {
+        "n_estimators": {
+          "type": "int",
+          "low": 100,
+          "high": 400,
+          "step": 50
+        },
+        "max_depth": {
+          "type": "int",
+          "low": 6,
+          "high": 20
+        },
+        "min_samples_split": {
+          "type": "int",
+          "low": 2,
+          "high": 10
+        },
+        "min_samples_leaf": {
+          "type": "int",
+          "low": 1,
+          "high": 5
+        }
+      }
+    },
+    "test_size": 0.2,
+    "random_state": 42,
+    "ingested_dataset_uri": "s3://cpnam-lab/artifacts/house/ingested/house.csv",
+    "tuning_results_uri": "s3://cpnam-lab/artifacts/house/hpo/best_params.json"
+  },
+  "ml_train_and_save_pipeline_4": {
+    "target_column": "median_house_value",
+    "model_name": "random_forest_regressor",
+    "model_version": "1",
+    "hyperparameters": {
+      "n_estimators": 300,
+      "max_depth": 12,
+      "min_samples_split": 2,
+      "min_samples_leaf": 1
+    },
+    "training_scenario": "baseline",
+    "target_output_path": "s3://cpnam-lab/models/house/",
+    "test_size": 0.2,
+    "random_state": 42,
+    "ingested_dataset_uri": "s3://cpnam-lab/artifacts/house/ingested/house.csv",
+    "training_base_uri": "s3://cpnam-lab/artifacts/house",
+    "trained_model_uri": "s3://cpnam-lab/artifacts/house/models/random_forest_regressor_v1/random_forest_regressor_v1.pkl",
+    "tuning_results_uri": "s3://cpnam-lab/artifacts/house/hpo/best_params.json"
+  }
+}

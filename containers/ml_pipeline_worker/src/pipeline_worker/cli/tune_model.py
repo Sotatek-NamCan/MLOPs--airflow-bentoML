@@ -14,13 +14,6 @@ from pipeline_worker.hpo import (
 from pipeline_worker.train_utils import load_train_data
 
 
-def _read_json_file(path: Path) -> Dict[str, Any]:
-    if not path.exists():
-        return {}
-    data = path.read_text(encoding="utf-8")
-    return json.loads(data)
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run Optuna hyperparameter tuning.")
     parser.add_argument("--train-data-path", required=True, help="Dataset path or S3 URI.")

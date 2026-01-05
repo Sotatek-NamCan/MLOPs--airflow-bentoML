@@ -24,3 +24,5 @@ async def predict(request: PredictionRequest):
     predictions = await model_runner.predict.async_run(request.samples)
     return {"predictions": predictions.tolist()}
 
+
+

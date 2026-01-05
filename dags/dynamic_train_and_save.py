@@ -2,15 +2,13 @@ from __future__ import annotations
 
 from airflow import DAG
 
-from pipeline_common import (
-    DEFAULT_DAG_KWARGS,
-    INGESTED_DATASET_URI,
-    TRAINED_MODEL_URI,
-    TRAINING_BASE_URI,
-    TUNING_RESULTS_URI,
-    pipeline_task,
-    select_params,
-)
+from pipeline_common import DEFAULT_DAG_KWARGS, pipeline_task, select_params
+
+
+INGESTED_DATASET_URI = "{{ dag_run.conf.get('ingested_dataset_uri') }}"
+TRAINING_BASE_URI = "{{ dag_run.conf.get('training_base_uri') }}"
+TRAINED_MODEL_URI = "{{ dag_run.conf.get('trained_model_uri') }}"
+TUNING_RESULTS_URI = "{{ dag_run.conf.get('tuning_results_uri') }}"
 
 
 with DAG(

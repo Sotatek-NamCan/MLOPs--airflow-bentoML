@@ -48,30 +48,21 @@ DEFAULT_SEARCH_SPACES: Dict[str, Dict[str, SearchSpec]] = {
     },
     "linear_regression": {
         "fit_intercept": SearchSpec("categorical", choices=[True, False]),
-        "normalize": SearchSpec("categorical", choices=[True, False]),
     },
 }
 
 
 def _serialize_spec(raw: Dict[str, Any]) -> SearchSpec:
-    spec_type = raw.get("type")
-    if not spec_type:
-        raise ValueError("Every search space entry must define 'type'.")
-    spec_type = spec_type.lower()
-    if spec_type not in {"int", "float", "categorical"}:
-        raise ValueError(f"Unsupported search space type '{spec_type}'.")
+    spec_type = str(raw.get("type") or "float").lower()
     if spec_type == "categorical":
-        choices = raw.get("choices")
-        if not choices:
-            raise ValueError("Categorical search space requires 'choices'.")
-        return SearchSpec(type=spec_type, choices=list(choices))
-    low = raw.get("low")
-    high = raw.get("high")
-    if low is None or high is None:
-        raise ValueError(f"Search space '{spec_type}' requires 'low' and 'high'.")
-    step = raw.get("step")
-    log = bool(raw.get("log", False))
-    return SearchSpec(type=spec_type, low=low, high=high, step=step, log=log)
+        return SearchSpec(type=spec_type, choices=list(raw.get("choices") or []))
+    return SearchSpec(
+        type=spec_type,
+        low=raw.get("low"),
+        high=raw.get("high"),
+        step=raw.get("step"),
+        log=bool(raw.get("log", False)),
+    )
 
 
 def _combine_search_space(model_name: str, overrides: Dict[str, Any]) -> Dict[str, SearchSpec]:
@@ -117,6 +108,7 @@ def _trial_objective(
         model.fit(X_train, y_train)
         preds = model.predict(X_valid)
     except Exception as exc:  # pragma: no cover - defensive
+        print(f"[HPO] Trial failed for {model_name} with params={params}: {exc!r}")
         raise TrialPruned() from exc
 
     if task_type == "regression":
@@ -178,6 +170,22 @@ def perform_hyperparameter_search(
         timeout=timeout,
         show_progress_bar=False,
     )
+
+    completed_trials = [
+        trial for trial in study.trials if trial.state == optuna.trial.TrialState.COMPLETE
+    ]
+    if not completed_trials:
+        pruned_count = sum(
+            1 for trial in study.trials if trial.state == optuna.trial.TrialState.PRUNED
+        )
+        failed_count = sum(
+            1 for trial in study.trials if trial.state == optuna.trial.TrialState.FAIL
+        )
+        print(
+            "[HPO] No completed trials. "
+            f"Returning base hyperparameters. (pruned={pruned_count}, failed={failed_count})"
+        )
+        return dict(base_hyperparameters)
 
     best_params = dict(base_hyperparameters)
     best_params.update(study.best_params)

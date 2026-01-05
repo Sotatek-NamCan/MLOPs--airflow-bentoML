@@ -10,4 +10,5 @@ python:
     - bentoml>=1.2
     - scikit-learn
     - pydantic<2.8    
-
+    - boto3
+    - dotenv
