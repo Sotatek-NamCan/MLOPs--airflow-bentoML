@@ -44,7 +44,8 @@ jobs:
               python3 -m venv .venv
             fi
             . .venv/bin/activate
-            pip install -r requirements.txt
+            python -m pip install --upgrade pip
+            python -m pip install -r requirements.txt
 
             python import_model.py \
               --s3-uri "${S3_URI}" \
