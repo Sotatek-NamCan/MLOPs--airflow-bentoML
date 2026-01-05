@@ -5,6 +5,7 @@ import os
 import pickle
 import tempfile
 from pathlib import Path
+from datetime import datetime
 
 import bentoml
 import boto3
@@ -44,7 +45,15 @@ def import_model_from_s3(
         with open(local_path, "rb") as f:
             model_obj = pickle.load(f)
 
-        save_tag = f"{model_name}:{model_version}"
+        resolved_version = model_version
+        if model_version.lower() == "latest":
+            resolved_version = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+            print(
+                "[Import] 'latest' is reserved by BentoML. "
+                f"Using generated version {resolved_version} and 'model:latest' will point to it automatically."
+            )
+
+        save_tag = f"{model_name}:{resolved_version}"
         bentoml.sklearn.save_model(
             save_tag,
             model_obj,
@@ -71,3 +80,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

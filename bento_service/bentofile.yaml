@@ -1,8 +1,13 @@
-service: "service:svc"
+service: "service.py:svc"
+description: "Basic Bento packaging for a scikit-learn service."
+labels:
+  owner: "mlops-team"
+  project: "fundamentals-of-mlops"
 include:
   - "service.py"
 python:
   packages:
-    - bentoml
-    - numpy
+    - bentoml>=1.2
     - scikit-learn
+    - pydantic<2.8    
+

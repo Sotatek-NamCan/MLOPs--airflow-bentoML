@@ -1,30 +1,26 @@
-import numpy as np
+"""Basic BentoML service definition for a scikit-learn model."""
+
+from typing import List
+
 import bentoml
 from bentoml.io import JSON
+from pydantic import BaseModel
 
-model_ref = bentoml.models.get("model:latest")
-runner = bentoml.sklearn.get(model_ref).to_runner()
-svc = bentoml.Service(
-    "model",
-    runners=[runner],
-    traffic={
-        "timeout": 30,
-        "max_request_size": 1048576,
-    },
-    config=bentoml.ConfigDict(
-        logging={"inference": {"enabled": True, "sample_rate": 1.0}},
-        tracing={"sample_rate": 1.0},
-        monitoring={
-            "enable_prometheus": True,
-            "prometheus_namespace": "bento",
-            "prometheus_port": 3000,
-        },
-    ),
-)
+# Update the MODEL_TAG with the tag shown by `bentoml models list`.
+MODEL_TAG = "model:latest"
+
+model_ref = bentoml.sklearn.get(MODEL_TAG)
+model_runner = model_ref.to_runner()
+svc = bentoml.Service("sklearn_service", runners=[model_runner])
 
 
-@svc.api(input=JSON(), output=JSON())
-async def predict(payload):
-    X = np.array(payload["data"])
-    y = await runner.predict.async_run(X)
-    return {"pred": y.tolist()}
+class PredictionRequest(BaseModel):
+    samples: List[List[float]]
+
+
+@svc.api(input=JSON(pydantic_model=PredictionRequest), output=JSON())
+async def predict(request: PredictionRequest):
+    """Return predictions for each row in `samples`."""
+    predictions = await model_runner.predict.async_run(request.samples)
+    return {"predictions": predictions.tolist()}
+
