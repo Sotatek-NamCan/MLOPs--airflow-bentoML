@@ -70,4 +70,4 @@ jobs:
           sudo systemctl restart model
           sudo systemctl status model --no-pager
           echo "==> Done"
-REMOTE_SCRIPT
+          REMOTE_SCRIPT
