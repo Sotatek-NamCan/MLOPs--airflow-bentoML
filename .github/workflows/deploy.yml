@@ -29,8 +29,9 @@ jobs:
             set -euo pipefail
             cd "${REPO_DIR}"
             git pull --ff-only
+            git checkout dev/spread-task
             cd "${REMOTE_DIR}"
-
+            
             if [ ! -f "import_model.py" ]; then
               echo "import_model.py not found in ${REMOTE_DIR}"
               exit 1
