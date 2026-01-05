@@ -31,8 +31,8 @@ jobs:
             git pull --ff-only
             cd "${REMOTE_DIR}"
 
-            if [ ! -f "import_model_from_s3.py" ]; then
-              echo "import_model_from_s3.py not found in ${REMOTE_DIR}"
+            if [ ! -f "import_model.py" ]; then
+              echo "import_model.py not found in ${REMOTE_DIR}"
               exit 1
             fi
             if [ ! -f ".envbento" ]; then
