@@ -1,4 +1,4 @@
-name: Deploy BentoML to EC2 (pull model.pkl from S3)
+name: Deploy BentoML to EC2 (pull model artifact from S3)
 
 on:
   push:
@@ -9,83 +9,65 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Setup SSH key (from secrets)
-      - name: Setup SSH agent
+      - name: Deploy on EC2
         shell: bash
+        env:
+          EC2_APP_DIR: ${{ secrets.EC2_APP_DIR }}           # e.g. /opt/bento-app
+          MODEL_META_FILE: ${{ secrets.MODEL_META_FILE }}   # e.g. /opt/bento-app/model.yaml
+          MODEL_S3_PREFIX: ${{ secrets.MODEL_S3_PREFIX }}   # e.g. s3://my-bucket/artifacts
         run: |
           set -euo pipefail
+
+          # --- SSH key + known_hosts (simple, no ssh-agent) ---
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          eval "$(ssh-agent -s)"
-          # Add private key (PEM) from secret
-          ssh-add - <<< "${{ secrets.EC2_SSH_KEY }}"
+          echo "${{ secrets.EC2_SSH_KEY }}" | tr -d '\r' > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
 
-          # Add EC2 host key to known_hosts to avoid interactive prompt
           ssh-keyscan -p "${{ secrets.EC2_PORT }}" -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      # 2) Deploy via SSH (run remote script)
-      - name: SSH deploy on EC2
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          ssh -p "${{ secrets.EC2_PORT }}" \
-              -o StrictHostKeyChecking=yes \
-              "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
-              'bash -s' <<'REMOTE_SCRIPT'
+          # --- Run remote deploy script ---
+          ssh -i ~/.ssh/ec2_key \
+            -p "${{ secrets.EC2_PORT }}" \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
+            "EC2_APP_DIR='${EC2_APP_DIR}' MODEL_META_FILE='${MODEL_META_FILE}' MODEL_S3_PREFIX='${MODEL_S3_PREFIX}' bash -s" <<'REMOTE_SCRIPT'
           set -euo pipefail
 
           APP_DIR="${EC2_APP_DIR}"
-          MODEL_META_FILE="${MODEL_META_FILE}"
+          META_FILE="${MODEL_META_FILE}"
           S3_PREFIX="${MODEL_S3_PREFIX}"
 
-          echo "==> Go to app dir: $APP_DIR"
-          cd "$APP_DIR"
+          echo "==> APP_DIR: ${APP_DIR}"
+          cd "${APP_DIR}"
 
-          get_yaml_value() {
-            local key="$1"
-            awk -F': ' -v k="$key" '
-              $1==k {
-                v=$2
-                gsub(/^[ \t]+|[ \t]+$/, "", v)
-                gsub(/"/, "", v)
-                print v
-                exit
+          # Read: model-path: "models/.../model.pkl"
+          MODEL_PATH="$(
+            awk '
+              $0 ~ /^[[:space:]]*model-path[[:space:]]*:/ {
+                sub(/^[[:space:]]*model-path[[:space:]]*:[[:space:]]*/, "", $0)
+                gsub(/^[ \t]+|[ \t]+$/, "", $0)
+                gsub(/^["'\''"]|["'\''"]$/, "", $0)
+                print; exit
               }
-            ' "$MODEL_META_FILE"
-          }
-
-          MODEL_PATH="$(get_yaml_value 'model-path')"
+            ' "$META_FILE"
+          )"
 
           if [ -z "${MODEL_PATH:-}" ]; then
-            echo "ERROR: model-path is empty or not found in $MODEL_META_FILE"
+            echo "ERROR: model-path is empty or not found in ${META_FILE}"
             exit 1
           fi
 
-          # model-path already includes filename
           S3_URI="${S3_PREFIX%/}/${MODEL_PATH#/}"
+          echo "==> Using S3 URI: ${S3_URI}"
 
-          echo "==> Using S3 URI: $S3_URI"
-
-          mkdir -p tmp models
-
-          echo "==> Download model artifact from S3"
-          aws s3 cp "$S3_URI" "tmp/model.pkl"
-
-          echo "==> Verify model file"
-          ls -lah tmp/model.pkl
-
-          mv -f "./tmp/model.pkl" "./models/model.pkl"
+          mkdir -p models
+          aws s3 cp "${S3_URI}" "models/model.pkl"
+          ls -lah models/model.pkl
 
           sudo systemctl restart model
           sudo systemctl status model --no-pager
-
           echo "==> Done"
 REMOTE_SCRIPT
-        env:
-          # pass secrets into the remote script as env vars
-          EC2_APP_DIR: ${{ secrets.EC2_APP_DIR }}
-          MODEL_META_FILE: ${{ secrets.MODEL_META_FILE }}
-          MODEL_S3_PREFIX: ${{ secrets.MODEL_S3_PREFIX }}
