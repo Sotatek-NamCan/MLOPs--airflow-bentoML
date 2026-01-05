@@ -5,7 +5,4 @@ pydantic
 python-dotenv
 boto3
 numpy
-scipybentoml==1.4.31
-numpy
-scikit-learn
-
+scipy
