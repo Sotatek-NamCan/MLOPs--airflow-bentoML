@@ -1,36 +1,9 @@
 name: Bento Import and Serve
 
 on:
-  workflow_dispatch:
-    inputs:
-      remote_dir:
-        description: Path to the bento_service folder on the instance
-        required: false
-        default: /home/ec2-user/MLOPs--airflow-bentoML/bento_service
-      repo_dir:
-        description: Path to the repo root on the instance (used for git pull)
-        required: false
-        default: /home/ec2-user/MLOPs--airflow-bentoML
-      model_name:
-        description: Bento model name
-        required: false
-        default: model
-      model_version:
-        description: Bento model version (use "latest" to auto-tag)
-        required: false
-        default: latest
-      bento_tag:
-        description: "Bento tag used for containerize/run (ex: driver_prediction_service:latest)"
-        required: false
-        default: driver_prediction_service:latest
-      serve_port:
-        description: Port for BentoML HTTP server
-        required: false
-        default: "3000"
-      ssh_port:
-        description: SSH port for the instance
-        required: false
-        default: "22"
+  push:
+    branches:
+      - main
 
 jobs:
   deploy-bento:
@@ -39,18 +12,18 @@ jobs:
       - name: SSH import/build/serve
         uses: appleboy/ssh-action@v1.0.3
         env:
-          REPO_DIR: ${{ inputs.repo_dir }}
-          REMOTE_DIR: ${{ inputs.remote_dir }}
+          REPO_DIR: /home/ec2-user/MLOPs--airflow-bentoML
+          REMOTE_DIR: /home/ec2-user/MLOPs--airflow-bentoML/bento_service
           S3_URI: ${{ secrets.MODEL_S3_PREFIX }}
-          MODEL_NAME: ${{ inputs.model_name }}
-          MODEL_VERSION: ${{ inputs.model_version }}
-          BENTO_TAG: ${{ inputs.bento_tag }}
-          SERVE_PORT: ${{ inputs.serve_port }}
+          MODEL_NAME: model
+          MODEL_VERSION: latest
+          BENTO_TAG: driver_prediction_service:latest
+          SERVE_PORT: "3000"
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          port: ${{ inputs.ssh_port }}
+          port: "22"
           envs: REPO_DIR,REMOTE_DIR,S3_URI,MODEL_NAME,MODEL_VERSION,BENTO_TAG,SERVE_PORT
           script: |
             set -euo pipefail
