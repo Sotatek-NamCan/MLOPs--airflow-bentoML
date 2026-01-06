@@ -50,7 +50,7 @@ jobs:
             echo "  MODEL_NAME=${MODEL_NAME}"
             echo "  MODEL_VERSION=${MODEL_VERSION}"
             echo "  BENTO_TAG=${BENTO_TAG}"
-            BENTO_TAG= "${MODEL_NAME}:${MODEL_VERSION}"
+            BENTO_TAG="${MODEL_NAME}:${MODEL_VERSION}"
             if [ -z "${MODEL_PATH}" ] || [ -z "${MODEL_NAME}" ] || [ -z "${MODEL_VERSION}" ] || [ -z "${BENTO_TAG}" ]; then
               echo "Failed to parse ${MODEL_VERSION_FILE}. Need model-path, model-name, model-version, model"
               exit 1
