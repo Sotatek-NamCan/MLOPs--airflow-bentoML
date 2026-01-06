@@ -1,5 +1,5 @@
 model: "my_model:vip1"
 model-name: "my_model"
-model-version: "vip1"
+model-version: "v2"
 model-path: "insurance/models/linear_regression_v1/linear_regression_v1.pkl"
 description: "test"
