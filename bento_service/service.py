@@ -1,29 +1,35 @@
 """Basic BentoML service definition for a scikit-learn model."""
 
 from typing import List
+
 import os
+
 import bentoml
-from bentoml.io import JSON
 from pydantic import BaseModel
 
 # Update the MODEL_TAG with the tag shown by `bentoml models list`.
-MODEL_TAG = "model:latest"
-
-model_ref = bentoml.sklearn.get(MODEL_TAG)
-model_runner = model_ref.to_runner()
+MODEL_TAG = os.getenv("BENTOML_MODEL_TAG", "model:latest")
 SERVICE_NAME = os.getenv("BENTO_SERVICE_NAME", "sklearn_service")
-svc = bentoml.Service(SERVICE_NAME)
-svc.add_runner(model_runner)
+
 
 class PredictionRequest(BaseModel):
     samples: List[List[float]]
 
 
-@svc.api(input=JSON(pydantic_model=PredictionRequest), output=JSON())
-async def predict(request: PredictionRequest):
-    """Return predictions for each row in `samples`."""
-    predictions = await model_runner.predict.async_run(request.samples)
-    return {"predictions": predictions.tolist()}
+class PredictionResponse(BaseModel):
+    predictions: List[float]
+
+
+@bentoml.service(name=SERVICE_NAME)
+class SklearnService:
+    def __init__(self) -> None:
+        self.model = bentoml.sklearn.load_model(MODEL_TAG)
+
+    @bentoml.api(input_spec=PredictionRequest, output_spec=PredictionResponse)
+    def predict(self, request: PredictionRequest) -> PredictionResponse:
+        """Return predictions for each row in `samples`."""
+        predictions = self.model.predict(request.samples)
+        return PredictionResponse(predictions=predictions.tolist())
 
 
 
