@@ -5,6 +5,8 @@ labels:
   project: "fundamentals-of-mlops"
 include:
   - "service.py"
+models:
+  - "model:latest"
 python:
   packages:
     - bentoml>=1.2
