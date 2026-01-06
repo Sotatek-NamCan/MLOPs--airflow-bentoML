@@ -84,7 +84,7 @@ jobs:
 
             SERVICE_NAME="sklearn_service"
             BENTO_VERSION="${MODEL_VERSION}"
-            IMAGE_TAG="${SERVICE_NAME}:${BENTO_VERSION}"
+            IMAGE_TAG="${SERVICE_NAME}:${BENTO_VERSION}" 
 
             # Cleanup trùng version (container/image/bento)
             docker rm -f bento_service 2>/dev/null || true
