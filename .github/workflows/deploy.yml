@@ -75,12 +75,12 @@ jobs:
               exit 1
             fi
 
-            if [ ! -d ".venv" ]; then
-              python3 -m venv .venv
-            fi
-            . .venv/bin/activate
-            python -m pip install --upgrade pip
-            python -m pip install -r requirements.txt
+            # if [ ! -d ".venv" ]; then
+            #   python3 -m venv .venv
+            # fi
+            # . .venv/bin/activate
+            python3 -m pip install --upgrade pip
+            python3 -m pip install -r requirements.txt
 
             SERVICE_NAME="sklearn_service"
             BENTO_VERSION="${MODEL_VERSION}"
@@ -93,7 +93,7 @@ jobs:
             bentoml models delete -y "${BENTO_TAG}" 2>/dev/null || true
 
             # Import model từ S3_URI (đã ghép prefix + path)
-            python import_model.py \
+            python3 import_model.py \
               --s3-uri "${S3_URI}" \
               --model-name "${MODEL_NAME}" \
               --model-version "${MODEL_VERSION}"
