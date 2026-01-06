@@ -54,9 +54,9 @@ jobs:
               --model-version "${MODEL_VERSION}"
 
             export BENTOML_MODEL_TAG="${MODEL_NAME}:${MODEL_VERSION}"
-            bentoml build -t "${BENTO_TAG}"
-            bentoml containerize "${BENTO_TAG}"
+            bentoml build --version v1.0.0
+            bentoml containerize sklearn_service:v1.0.0
             docker run -d --name bento_service -p "${SERVE_PORT}:3000" \
               -e BENTOML_MODEL_TAG="${MODEL_NAME}:${MODEL_VERSION}" \
-              "${BENTO_TAG}"
+              sklearn_service:v1.0.0
             echo "BentoML container started on port ${SERVE_PORT}"
