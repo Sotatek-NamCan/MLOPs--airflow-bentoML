@@ -11,8 +11,9 @@ MODEL_TAG = "model:latest"
 
 model_ref = bentoml.sklearn.get(MODEL_TAG)
 model_runner = model_ref.to_runner()
-svc = bentoml.Service("sklearn_service", runners=[model_runner])
-
+SERVICE_NAME = os.getenv("BENTO_SERVICE_NAME", "sklearn_service")
+svc = bentoml.Service(SERVICE_NAME)
+svc.add_runner(model_runner)
 
 class PredictionRequest(BaseModel):
     samples: List[List[float]]
