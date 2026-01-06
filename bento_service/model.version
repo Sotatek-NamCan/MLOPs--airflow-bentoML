@@ -1,4 +1,4 @@
-model-name: "my_model"
-model-version: "v2"
-model-path: "insurance/models/linear_regression_v1/linear_regression_v1.pkl"
-description: "test"
+model-name: "logistic_regression"
+model-version: "v1"
+model-path: "/iris/models/logistic_regression_v1/logistic_regression_v1.pkl"
+description: "logistic_regression:v1"
