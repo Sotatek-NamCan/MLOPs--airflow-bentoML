@@ -8,7 +8,7 @@ import bentoml
 from pydantic import BaseModel
 
 # Update the MODEL_TAG with the tag shown by `bentoml models list`.
-MODEL_TAG = os.getenv("BENTOML_MODEL_TAG", "model:v1")
+MODEL_TAG = os.getenv("BENTO_TAG", "model:v1")
 SERVICE_NAME = os.getenv("BENTO_SERVICE_NAME", "sklearn_service")
 
 
