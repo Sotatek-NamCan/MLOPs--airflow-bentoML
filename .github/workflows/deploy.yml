@@ -46,7 +46,7 @@ jobs:
             MODEL_PATH="$(sed -nE 's/^model-path:[[:space:]]*"(.*)".*/\1/p' "${MODEL_VERSION_FILE}" | head -n1)"
             MODEL_NAME="$(sed -nE 's/^model-name:[[:space:]]*"(.*)".*/\1/p' "${MODEL_VERSION_FILE}" | head -n1)"
             MODEL_VERSION="$(sed -nE 's/^model-version:[[:space:]]*"(.*)".*/\1/p' "${MODEL_VERSION_FILE}" | head -n1)"
-            BENTO_TAG="$(sed -nE 's/^model:[[:space:]]*"(.*)".*/\1/p' "${MODEL_VERSION_FILE}" | head -n1)"
+            # BENTO_TAG="$(sed -nE 's/^model:[[:space:]]*"(.*)".*/\1/p' "${MODEL_VERSION_FILE}" | head -n1)"
             echo "  MODEL_NAME=${MODEL_NAME}"
             echo "  MODEL_VERSION=${MODEL_VERSION}"
             echo "  BENTO_TAG=${BENTO_TAG}"
