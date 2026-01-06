@@ -90,6 +90,7 @@ jobs:
             docker rm -f bento_service 2>/dev/null || true
             docker rmi -f "${IMAGE_TAG}" 2>/dev/null || true
             bentoml delete -y "${SERVICE_NAME}:${BENTO_VERSION}" 2>/dev/null || true  
+            bentoml models delete -y "${BENTO_TAG}" 2>/dev/null || true
 
             # Import model từ S3_URI (đã ghép prefix + path)
             python import_model.py \
