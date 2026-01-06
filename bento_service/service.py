@@ -8,7 +8,7 @@ import bentoml
 from pydantic import BaseModel
 
 # Update the MODEL_TAG with the tag shown by `bentoml models list`.
-MODEL_TAG = os.getenv("BENTOML_MODEL_TAG", "model:v1")
+MODEL_TAG = os.getenv("BENTOML_MODEL_TAG", "model:latest")
 SERVICE_NAME = os.getenv("BENTO_SERVICE_NAME", "sklearn_service")
 
 
@@ -26,9 +26,9 @@ class SklearnService:
         self.model = bentoml.sklearn.load_model(MODEL_TAG)
 
     @bentoml.api(input_spec=PredictionRequest, output_spec=PredictionResponse)
-    def predict(self, request: PredictionRequest) -> PredictionResponse:
+    def predict(self, samples: List[List[float]]) -> PredictionResponse:
         """Return predictions for each row in `samples`."""
-        predictions = self.model.predict(request.samples)
+        predictions = self.model.predict(samples)
         return PredictionResponse(predictions=predictions.tolist())
 
 
