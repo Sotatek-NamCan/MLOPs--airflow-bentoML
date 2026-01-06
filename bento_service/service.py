@@ -1,7 +1,7 @@
 """Basic BentoML service definition for a scikit-learn model."""
 
 from typing import List
-
+import os
 import bentoml
 from bentoml.io import JSON
 from pydantic import BaseModel
