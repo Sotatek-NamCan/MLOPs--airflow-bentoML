@@ -28,8 +28,8 @@ jobs:
           script: |
             set -euo pipefail
             cd "${REPO_DIR}"
-            git pull --ff-only
             git checkout dev/spread-task
+            git pull --ff-only
             cd "${REMOTE_DIR}"
             
             if [ ! -f "import_model.py" ]; then
