@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
-import os
-import subprocess
-import tempfile
+import re
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -41,12 +39,15 @@ def _get_github_token_from_variable(var_key: str = GITHUB_TOKEN_VAR_KEY) -> str:
         )
     return token
 
-def _escape_for_sed_replacement(s: str) -> str:
-    """
-    Escape replacement text for sed (basic safe escaping).
-    We use delimiter | so we must escape: \ and | and &
-    """
-    return s.replace("\\", "\\\\").replace("|", "\\|").replace("&", "\\&")
+def _replace_yaml_key(text: str, key: str, value: str) -> str:
+    pattern = rf"^{re.escape(key)}:[ \t]*.*$"
+    replacement = f'{key}: "{value}"'
+    new_text, count = re.subn(pattern, replacement, text, flags=re.MULTILINE)
+    if count == 0:
+        # Append missing key at the end of the file.
+        suffix = "" if new_text.endswith("\n") or new_text == "" else "\n"
+        return f"{new_text}{suffix}{replacement}\n"
+    return new_text
 
 
 default_args = {
@@ -56,15 +57,16 @@ default_args = {
 }
 
 with DAG(
-    dag_id="github_deploy",
+    dag_id="ml_github_deploy_5",
     start_date=datetime(2024, 1, 1),  # nếu muốn timezone-aware thì add tzinfo=timezone.utc
     schedule=None,
     catchup=False,
     render_template_as_native_obj=True,
     params={
-        "model_version": "2025-12-22_001",
-        "model_path": "my_model",
-        "commit_message": "",  # blank
+        "model-name": "my_model",
+        "model-version": "2025-12-22_001",
+        "model-path": "models/my_model",
+        "description": "",  # blank
     },
     tags=["deploy", "github"],
 ) as dag:
@@ -73,18 +75,20 @@ with DAG(
     def update_model_in_github_file(**context) -> dict:
         p = context["params"]  # lấy params từ UI
 
-        model_version = (p.get("model_version") or "").strip()
-        model_path = (p.get("model_path") or "").strip()
-        commit_message = (p.get("commit_message") or "").strip() or None
+        model_name = (p.get("model-name") or "").strip()
+        model_version = (p.get("model-version") or "").strip()
+        model_path = (p.get("model-path") or "").strip()
+        description = (p.get("description") or "").strip()
 
-        if not model_version or not model_path:
-            raise AirflowException("Missing required params: model_version, model_path")
+        if not model_name or not model_version or not model_path or not description:
+            raise AirflowException(
+                "Missing required params: model-name, model-version, model-path, description"
+            )
 
         token = _get_github_token_from_variable()
         headers = _github_headers(token)
 
-        if commit_message is None:
-            commit_message = f"chore: bump model to {model_path}:{model_version}"
+        commit_message = description
 
         content_url = f"https://api.github.com/repos/{OWNER}/{REPO}/contents/{FILE_PATH}"
 
@@ -103,25 +107,14 @@ with DAG(
 
         original_text = base64.b64decode(content_b64).decode("utf-8")
 
-        # sed replace: ^model: ... -> model: "<model_path>:<model_version>"
-        new_model_value = f'{model_path}:{model_version}'
-        new_model_value_escaped = _escape_for_sed_replacement(new_model_value)
-
-        with tempfile.TemporaryDirectory() as td:
-            tmp_path = os.path.join(td, "target.yaml")
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                f.write(original_text)
-
-            sed_expr = (
-                f'0,/^model:[[:space:]]*.*/s|^model:[[:space:]]*.*|model: "{new_model_value_escaped}"|'
-            )
-            subprocess.run(["sed", "-E", "-i", sed_expr, tmp_path], check=True)
-
-            with open(tmp_path, "r", encoding="utf-8") as f:
-                updated_text = f.read()
+        updated_text = original_text
+        updated_text = _replace_yaml_key(updated_text, "model-name", model_name)
+        updated_text = _replace_yaml_key(updated_text, "model-version", model_version)
+        updated_text = _replace_yaml_key(updated_text, "model-path", model_path)
+        updated_text = _replace_yaml_key(updated_text, "description", description)
 
         if updated_text == original_text:
-            raise AirflowException("No change after sed. Does file contain a 'model:' line?")
+            raise AirflowException("No change after update. Are the values already set?")
 
         updated_b64 = base64.b64encode(updated_text.encode("utf-8")).decode("utf-8")
         payload = {
@@ -139,7 +132,10 @@ with DAG(
         out = r2.json()
         return {
             "status": "ok",
-            "model": f"{model_path}:{model_version}",
+            "model-name": model_name,
+            "model-version": model_version,
+            "model-path": model_path,
+            "description": description,
             "commit_url": out.get("commit", {}).get("html_url"),
         }
 

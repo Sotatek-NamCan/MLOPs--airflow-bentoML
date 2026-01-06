@@ -69,6 +69,9 @@ SECURITY_GROUPS = [
 ]
 
 ARTIFACT_BUCKET = "nam-mlops-pipeline-bucket"
+AWSLOGS_GROUP = "/ecs/nam-task-definition"
+AWSLOGS_STREAM_PREFIX = "ecs/nam-container"
+
 
 if not ARTIFACT_BUCKET:
     raise RuntimeError("Set OBJECT_STORAGE_BUCKET to enable S3 hand-off between tasks.")
@@ -174,8 +177,8 @@ def _pipeline_task(
         aws_conn_id=AWS_CONN_ID,
         network_configuration=NETWORK_CONFIGURATION,
         wait_for_completion=True,
-        # awslogs_group=AWSLOGS_GROUP,
-        # awslogs_stream_prefix=AWSLOGS_STREAM_PREFIX,
+        awslogs_group=AWSLOGS_GROUP,
+        awslogs_stream_prefix=AWSLOGS_STREAM_PREFIX,
         awslogs_region=REGION_NAME,
         propagate_tags="TASK_DEFINITION",
         overrides=overrides,
@@ -185,12 +188,12 @@ def _pipeline_task(
 
 
 with DAG(
-    dag_id="ml_dynamic_pipeline_with_ingestion_and_training_vip",
+    dag_id="ml_dynamic_pipeline_with_ingestion_and_training",
     default_args=DEFAULT_DAG_ARGS,
     start_date=datetime(2024, 1, 1),
     schedule=None,
     catchup=False,
-    render_template_as_native_obj=True,
+    render_template_as_native_obj=False,
     params={
         "data_source": Param(
             "", type="string", description="Location of the dataset to ingest."
@@ -223,7 +226,15 @@ with DAG(
             42, type="integer", description="Random seed used for training."
         ),
         "ingestion_config": Param(
-            {}, type="object", description="Optional overrides for ingestion."
+            {
+    "object_storage": {
+      "enabled": True,
+      "bucket": "cpnam-s3-tfbackend",
+      "object_key": "data/driver_safety/driver_safety.csv",
+      "cache_dir": "data/cache_driver_safety"
+    },
+    "file_extension": ".csv"
+  }, type="object", description="Optional overrides for ingestion."
         ),
         "target_column": Param(
             "target", type="string", description="Target column to predict."
@@ -290,7 +301,7 @@ with DAG(
             "--model-name",
             "{{ params.model_name }}",
             "--model-version",
-            "{{ params.model_version }}",
+            "{{ params.model_version | string }}",
             "--hyperparameters",
             "{{ params.hyperparameters | tojson }}",
             "--training-scenario",
@@ -298,9 +309,9 @@ with DAG(
             "--target-output-path",
             TRAINING_OUTPUT_BASE,
             "--test-size",
-            "{{ params.test_size }}",
+            "{{ params.test_size | string }}",
             "--random-state",
-            "{{ params.random_state }}",
+            "{{ params.random_state | string}}",
         ],
         xcom_push=False,
     )
