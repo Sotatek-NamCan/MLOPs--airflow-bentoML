@@ -47,7 +47,7 @@ jobs:
             MODEL_NAME="$(sed -nE 's/^model-name:[[:space:]]*"(.*)".*/\1/p' "${MODEL_VERSION_FILE}" | head -n1)"
             MODEL_VERSION="$(sed -nE 's/^model-version:[[:space:]]*"(.*)".*/\1/p' "${MODEL_VERSION_FILE}" | head -n1)"
             BENTO_TAG="$(sed -nE 's/^model:[[:space:]]*"(.*)".*/\1/p' "${MODEL_VERSION_FILE}" | head -n1)"
-
+            BENTO_TAG= "${MODEL_NAME}:${MODEL_VERSION}"
             if [ -z "${MODEL_PATH}" ] || [ -z "${MODEL_NAME}" ] || [ -z "${MODEL_VERSION}" ] || [ -z "${BENTO_TAG}" ]; then
               echo "Failed to parse ${MODEL_VERSION_FILE}. Need model-path, model-name, model-version, model"
               exit 1
