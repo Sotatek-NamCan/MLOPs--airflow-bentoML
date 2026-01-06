@@ -16,7 +16,7 @@ jobs:
           REMOTE_DIR: /home/ec2-user/MLOPs--airflow-bentoML/bento_service
           S3_URI: ${{ secrets.MODEL_S3_PREFIX }}
           MODEL_NAME: model
-          MODEL_VERSION: latest
+          MODEL_VERSION: v1
           BENTO_TAG: driver_prediction_service:latest
           SERVE_PORT: "3000"
         with:
