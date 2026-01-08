@@ -1,0 +1,111 @@
+name: Bento Import and Serve
+
+on:
+  push:
+    branches:
+      - dev/spread-task
+
+jobs:
+  deploy-bento:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH import/build/serve
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          REPO_DIR: /home/ec2-user/MLOPs--airflow-bentoML
+          REMOTE_DIR: /home/ec2-user/MLOPs--airflow-bentoML/bento_service
+          SERVICE_NAME: sklearn_service
+          # secret prefix, ví dụ: s3://my-bucket/prefix
+          S3_PREFIX: ${{ secrets.MODEL_S3_PREFIX }}
+
+          # file chứa version info
+          MODEL_VERSION_FILE: model.version
+
+          SERVE_PORT: "3000"
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: "22"
+          envs: REPO_DIR,REMOTE_DIR,S3_PREFIX,MODEL_VERSION_FILE,SERVE_PORT
+          script: |
+            set -euo pipefail
+
+            cd "${REPO_DIR}"
+            git checkout dev/spread-task
+            git pull --ff-only
+
+            cd "${REMOTE_DIR}"
+
+            if [ ! -f "${MODEL_VERSION_FILE}" ]; then
+              echo "${MODEL_VERSION_FILE} not found in ${REMOTE_DIR}"
+              exit 1
+            fi
+
+            # Parse model.version (YAML dạng: key: "value")
+            MODEL_PATH="$(sed -nE 's/^model-path:[[:space:]]*"(.*)".*/\1/p' "${MODEL_VERSION_FILE}" | head -n1)"
+            MODEL_NAME="$(sed -nE 's/^model-name:[[:space:]]*"(.*)".*/\1/p' "${MODEL_VERSION_FILE}" | head -n1)"
+            MODEL_VERSION="$(sed -nE 's/^model-version:[[:space:]]*"(.*)".*/\1/p' "${MODEL_VERSION_FILE}" | head -n1)"
+            # BENTO_TAG="$(sed -nE 's/^model:[[:space:]]*"(.*)".*/\1/p' "${MODEL_VERSION_FILE}" | head -n1)"
+            BENTO_TAG="${MODEL_NAME}:${MODEL_VERSION}"
+            echo "  MODEL_NAME=${MODEL_NAME}"
+            echo "  MODEL_VERSION=${MODEL_VERSION}"
+            echo "  BENTO_TAG=${BENTO_TAG}"
+
+            if [ -z "${MODEL_PATH}" ] || [ -z "${MODEL_NAME}" ] || [ -z "${MODEL_VERSION}" ] || [ -z "${BENTO_TAG}" ]; then
+              echo "Failed to parse ${MODEL_VERSION_FILE}. Need model-path, model-name, model-version, model"
+              exit 1
+            fi
+
+            # Build S3_URI = prefix + model-path (handle /)
+            S3_URI="${S3_PREFIX%/}/${MODEL_PATH#/}"
+
+            echo "Resolved:"
+            echo "  S3_URI=${S3_URI}"
+            echo "  MODEL_NAME=${MODEL_NAME}"
+            echo "  MODEL_VERSION=${MODEL_VERSION}"
+            echo "  BENTO_TAG=${BENTO_TAG}"
+
+            if [ ! -f "import_model.py" ]; then
+              echo "import_model.py not found in ${REMOTE_DIR}"
+              exit 1
+            fi
+            if [ ! -f ".envbento" ]; then
+              echo ".envbento not found in ${REMOTE_DIR}"
+              exit 1
+            fi
+
+            # if [ ! -d ".venv" ]; then
+            #   python3 -m venv .venv
+            # fi
+            # . .venv/bin/activate
+            python3 -m pip install --upgrade pip
+            python3 -m pip install -r requirements.txt
+
+            SERVICE_NAME="sklearn_service"
+            BENTO_VERSION="${MODEL_VERSION}"
+            IMAGE_TAG="${SERVICE_NAME}:${BENTO_VERSION}" 
+
+            # Cleanup trùng version (container/image/bento)
+            docker rm -f bento_service 2>/dev/null || true
+            docker rmi -f "${IMAGE_TAG}" 2>/dev/null || true
+            bentoml delete -y "${SERVICE_NAME}:${BENTO_VERSION}" 2>/dev/null || true  
+            bentoml models delete -y "${BENTO_TAG}" 2>/dev/null || true
+
+            # Import model từ S3_URI (đã ghép prefix + path)
+            python3 import_model.py \
+              --s3-uri "${S3_URI}" \
+              --model-name "${MODEL_NAME}" \
+              --model-version "${MODEL_VERSION}"
+
+            # Dùng đúng tag từ file (model: "my_model:vip1")
+            export BENTOML_MODEL_TAG="${BENTO_TAG}"
+
+            bentoml build --version "${BENTO_VERSION}"
+            bentoml containerize "${SERVICE_NAME}:${BENTO_VERSION}"
+
+            docker run -d --name bento_service -p "${SERVE_PORT}:3000" \
+              -e BENTOML_MODEL_TAG="${BENTO_TAG}" \
+              "${IMAGE_TAG}"
+
+            echo "BentoML container started on port ${SERVE_PORT}"

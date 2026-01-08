@@ -1,0 +1,4 @@
+model-name: "logistic_regression"
+model-version: "v1"
+model-path: "/iris/models/logistic_regression_v1/logistic_regression_v1.pkl"
+description: "logistic_regression:v1"
