@@ -1,14 +1,14 @@
 {
   "_note": "Use the object under each DAG id as the Airflow run config.",
   "ml_ingest_data_pipeline_1": {
-    "data_source": "s3://cpnam-lab/datasets/iris.csv",
-    "data_format": "csv",
+    "data_source": "s3://cpnam-lab/datasets/iris.parquet",
+    "data_format": "parquet",
     "input_schema_version": "v1",
     "ingestion_config": {
-      "file_extension": ".csv",
+      "file_extension": ".parquet",
       "cache_dir": "data/cache/iris"
     },
-    "ingested_dataset_uri": "s3://cpnam-lab/artifacts/iris/ingested/iris.csv"
+    "ingested_dataset_uri": "s3://cpnam-lab/artifacts/iris/ingested/iris.parquet"
   },
   "ml_validate_transform_pipeline_2": {
     "data_format": "csv",

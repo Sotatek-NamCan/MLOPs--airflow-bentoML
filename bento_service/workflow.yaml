@@ -1,0 +1,61 @@
+name: Bento Import and Serve
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-bento:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH import/build/serve
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          REPO_DIR: /home/ec2-user/MLOPs--airflow-bentoML
+          REMOTE_DIR: /home/ec2-user/MLOPs--airflow-bentoML/bento_service
+          S3_URI: ${{ secrets.MODEL_S3_PREFIX }}
+          MODEL_NAME: model
+          MODEL_VERSION: latest
+          BENTO_TAG: driver_prediction_service:latest
+          SERVE_PORT: "3000"
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: "22"
+          envs: REPO_DIR,REMOTE_DIR,S3_URI,MODEL_NAME,MODEL_VERSION,BENTO_TAG,SERVE_PORT
+          script: |
+            set -euo pipefail
+            cd "${REPO_DIR}"
+            git pull --ff-only
+            cd "${REMOTE_DIR}"
+
+            if [ ! -f "import_model_from_s3.py" ]; then
+              echo "import_model_from_s3.py not found in ${REMOTE_DIR}"
+              exit 1
+            fi
+            if [ ! -f ".envbento" ]; then
+              echo ".envbento not found in ${REMOTE_DIR}"
+              exit 1
+            fi
+
+            if [ ! -d ".venv" ]; then
+              python3 -m venv .venv
+            fi
+            . .venv/bin/activate
+            python -m pip install --upgrade pip
+            python -m pip install -r requirements.txt
+
+            python import_model_from_s3.py \
+              --s3-uri "${S3_URI}" \
+              --model-name "${MODEL_NAME}" \
+              --model-version "${MODEL_VERSION}"
+
+            export BENTOML_MODEL_TAG="${MODEL_NAME}:${MODEL_VERSION}"
+            bentoml build -t "${BENTO_TAG}"
+            bentoml containerize "${BENTO_TAG}"
+            docker run -d --name bento_service -p "${SERVE_PORT}:3000" \
+              -e BENTOML_MODEL_TAG="${MODEL_NAME}:${MODEL_VERSION}" \
+              "${BENTO_TAG}"
+            echo "BentoML container started on port ${SERVE_PORT}"

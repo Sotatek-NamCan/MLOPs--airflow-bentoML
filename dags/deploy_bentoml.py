@@ -62,8 +62,11 @@ with DAG(
     catchup=False,
     render_template_as_native_obj=True,
     params={
+        "model_name": "my_model",
         "model_version": "2025-12-22_001",
-        "model_path": "my_model",
+        "model_path": "my_model/path/to/model.pkl",
+        "description": "",
+        "branch": BRANCH,
         "commit_message": "",  # blank
     },
     tags=["deploy", "github"],
@@ -73,12 +76,17 @@ with DAG(
     def update_model_in_github_file(**context) -> dict:
         p = context["params"]  # lấy params từ UI
 
+        model_name = (p.get("model_name") or "").strip()
         model_version = (p.get("model_version") or "").strip()
         model_path = (p.get("model_path") or "").strip()
+        description = (p.get("description") or "").strip()
+        branch = (p.get("branch") or "").strip() or BRANCH
         commit_message = (p.get("commit_message") or "").strip() or None
 
-        if not model_version or not model_path:
-            raise AirflowException("Missing required params: model_version, model_path")
+        if not model_name or not model_version or not model_path or not description:
+            raise AirflowException(
+                "Missing required params: model_name, model_version, model_path, description"
+            )
 
         token = _get_github_token_from_variable()
         headers = _github_headers(token)
@@ -89,9 +97,9 @@ with DAG(
         content_url = f"https://api.github.com/repos/{OWNER}/{REPO}/contents/{FILE_PATH}"
 
         # GET file (sha + content)
-        r = requests.get(content_url, headers=headers, params={"ref": BRANCH}, timeout=30)
+        r = requests.get(content_url, headers=headers, params={"ref": branch}, timeout=30)
         if r.status_code == 404:
-            raise AirflowException(f"File not found: {FILE_PATH} on branch {BRANCH}")
+            raise AirflowException(f"File not found: {FILE_PATH} on branch {branch}")
         if r.status_code >= 400:
             raise AirflowException(f"GitHub GET failed: {r.status_code} {r.text}")
 
@@ -103,19 +111,27 @@ with DAG(
 
         original_text = base64.b64decode(content_b64).decode("utf-8")
 
-        # sed replace: ^model: ... -> model: "<model_path>:<model_version>"
-        new_model_value = f'{model_path}:{model_version}'
-        new_model_value_escaped = _escape_for_sed_replacement(new_model_value)
+        # sed replace: update fields in model.version
+        model_name_escaped = _escape_for_sed_replacement(model_name)
+        model_version_escaped = _escape_for_sed_replacement(model_version)
+        model_path_escaped = _escape_for_sed_replacement(model_path)
+        description_escaped = _escape_for_sed_replacement(description)
 
         with tempfile.TemporaryDirectory() as td:
             tmp_path = os.path.join(td, "target.yaml")
             with open(tmp_path, "w", encoding="utf-8") as f:
                 f.write(original_text)
 
-            sed_expr = (
-                f'0,/^model:[[:space:]]*.*/s|^model:[[:space:]]*.*|model: "{new_model_value_escaped}"|'
+            sed_exprs = [
+                f'0,/^model-name:[[:space:]]*.*/s|^model-name:[[:space:]]*.*|model-name: "{model_name_escaped}"|',
+                f'0,/^model-version:[[:space:]]*.*/s|^model-version:[[:space:]]*.*|model-version: "{model_version_escaped}"|',
+                f'0,/^model-path:[[:space:]]*.*/s|^model-path:[[:space:]]*.*|model-path: "{model_path_escaped}"|',
+                f'0,/^description:[[:space:]]*.*/s|^description:[[:space:]]*.*|description: "{description_escaped}"|',
+            ]
+            subprocess.run(
+                ["sed", "-E", "-i", *sum([["-e", e] for e in sed_exprs], []), tmp_path],
+                check=True,
             )
-            subprocess.run(["sed", "-E", "-i", sed_expr, tmp_path], check=True)
 
             with open(tmp_path, "r", encoding="utf-8") as f:
                 updated_text = f.read()
@@ -128,7 +144,7 @@ with DAG(
             "message": commit_message,
             "content": updated_b64,
             "sha": sha,
-            "branch": BRANCH,
+            "branch": branch,
             "committer": {"name": COMMITTER_NAME, "email": COMMITTER_EMAIL},
         }
 
@@ -140,6 +156,8 @@ with DAG(
         return {
             "status": "ok",
             "model": f"{model_path}:{model_version}",
+            "model_name": model_name,
+            "description": description,
             "commit_url": out.get("commit", {}).get("html_url"),
         }
 

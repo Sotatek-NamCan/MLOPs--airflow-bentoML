@@ -120,9 +120,11 @@ def _trial_objective(
 
 def _infer_task_type(model_name: str) -> str:
     name = model_name.lower()
-    if "regressor" in name or "regression" in name and not name.endswith("classifier"):
+    if name in {"logistic_regression", "random_forest_classifier"} or "classifier" in name:
+        return "classification"
+    if name in {"linear_regression", "random_forest_regressor"} or "regressor" in name:
         return "regression"
-    if name in {"linear_regression"}:
+    if "regression" in name:
         return "regression"
     return "classification"
 

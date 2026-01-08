@@ -31,7 +31,7 @@ This folder contains everything required to expose a model trained by the `ml_dy
    The script understands both local paths and S3/MinIO URIs (it now reads creds straight from `.envbento`). It registers the estimator inside the Bento model store with batchable `predict`/`predict_proba` signatures.
 5. **Serve locally**:
    ```powershell
-   bentoml serve service:svc --reload
+   bentoml serve service:SklearnService --reload
    ```
    or **build a distributable Bento**:
    ```powershell
@@ -50,7 +50,7 @@ This folder contains everything required to expose a model trained by the `ml_dy
   ```
 - **Smoke-test the API locally** (use the same payload structure that Airflow training used):
   ```powershell
-  bentoml serve service:svc --reload
+  bentoml serve service:SklearnService --reload
   ```
   In another terminal, send a request:
   ```powershell
