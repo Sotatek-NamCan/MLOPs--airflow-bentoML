@@ -6,7 +6,7 @@ import os
 import pickle
 import tempfile
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
 import pandas as pd
@@ -211,6 +211,30 @@ def _log_model_spec(
         print(f"[Training]   - {key}: {hyperparameters[key]!r}")
 
 
+def _record_metric(
+    metrics: Dict[str, float],
+    name: str,
+    compute: Callable[[], Any],
+) -> None:
+    try:
+        value = compute()
+    except Exception as exc:
+        print(f"[Training] Skipping metric {name}: {exc}")
+        return
+    if value is None:
+        print(f"[Training] Skipping metric {name}: value is None")
+        return
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError) as exc:
+        print(f"[Training] Skipping metric {name}: non-numeric value {value!r} ({exc})")
+        return
+    if not math.isfinite(numeric_value):
+        print(f"[Training] Skipping metric {name}: non-finite value {numeric_value!r}")
+        return
+    metrics[name] = numeric_value
+
+
 def select_model(
     model_name: str,
     hyperparameters: Dict[str, Any]
@@ -278,33 +302,58 @@ def train_and_save_model(
             model.fit(X_train, y_train)
 
             # Evaluate
-
-            #Try catch & log the metrics error.
             y_pred = model.predict(X_test)
             metrics: Dict[str, float] = {}
             is_classifier = hasattr(model, "predict_proba") or "classifier" in model_name.lower()
             if is_classifier:
-                metrics["accuracy"] = accuracy_score(y_test, y_pred)
-                metrics["precision"] = precision_score(y_test, y_pred, average="weighted", zero_division=0)
-                metrics["recall"] = recall_score(y_test, y_pred, average="weighted", zero_division=0)
-                metrics["f1"] = f1_score(y_test, y_pred, average="weighted", zero_division=0)
-                print(
-                    "[Training] Classification metrics "
-                    + ", ".join(f"{name}: {value:.4f}" for name, value in metrics.items())
+                _record_metric(metrics, "accuracy", lambda: accuracy_score(y_test, y_pred))
+                _record_metric(
+                    metrics,
+                    "precision",
+                    lambda: precision_score(y_test, y_pred, average="weighted", zero_division=0),
                 )
+                _record_metric(
+                    metrics,
+                    "recall",
+                    lambda: recall_score(y_test, y_pred, average="weighted", zero_division=0),
+                )
+                _record_metric(
+                    metrics,
+                    "f1",
+                    lambda: f1_score(y_test, y_pred, average="weighted", zero_division=0),
+                )
+                if metrics:
+                    print(
+                        "[Training] Classification metrics "
+                        + ", ".join(f"{name}: {value:.4f}" for name, value in metrics.items())
+                    )
+                else:
+                    print("[Training] Classification metrics unavailable.")
             else:
-                mse = mean_squared_error(y_test, y_pred)
-                metrics["mse"] = mse
-                metrics["rmse"] = math.sqrt(mse)
-                metrics["mae"] = mean_absolute_error(y_test, y_pred)
-                metrics["r2"] = r2_score(y_test, y_pred)
-                metrics["explained_variance"] = explained_variance_score(y_test, y_pred)
-                print(
-                    "[Training] Regression metrics "
-                    + ", ".join(f"{name}: {value:.4f}" for name, value in metrics.items())
+                _record_metric(metrics, "mse", lambda: mean_squared_error(y_test, y_pred))
+                if "mse" in metrics:
+                    _record_metric(metrics, "rmse", lambda: math.sqrt(metrics["mse"]))
+                else:
+                    print("[Training] Skipping metric rmse: mse unavailable.")
+                _record_metric(metrics, "mae", lambda: mean_absolute_error(y_test, y_pred))
+                _record_metric(metrics, "r2", lambda: r2_score(y_test, y_pred))
+                _record_metric(
+                    metrics,
+                    "explained_variance",
+                    lambda: explained_variance_score(y_test, y_pred),
                 )
+                if metrics:
+                    print(
+                        "[Training] Regression metrics "
+                        + ", ".join(f"{name}: {value:.4f}" for name, value in metrics.items())
+                    )
+                else:
+                    print("[Training] Regression metrics unavailable.")
             for name, value in metrics.items():
-                mlflow.log_metric(name, float(value))
+                try:
+                    mlflow.log_metric(name, value)
+                except Exception as exc:
+                    print(f"[Training] Failed to log metric {name}: {exc}")
 
             # Determine output destination
             output_bucket: Optional[str] = None
