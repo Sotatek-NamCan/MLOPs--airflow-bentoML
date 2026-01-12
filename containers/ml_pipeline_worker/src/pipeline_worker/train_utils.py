@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import difflib
+import math
 import os
 import pickle
 import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
-import math
 
 import pandas as pd
 import mlflow
@@ -45,6 +46,13 @@ _AWS_SECRET_KEY_ENV = "AWS_SECRET_ACCESS_KEY"
 _AWS_REGION_ENV = "AWS_REGION"
 _AWS_DEFAULT_REGION_ENV = "AWS_DEFAULT_REGION"
 _MLFLOW_S3_ENDPOINT_ENV = "MLFLOW_S3_ENDPOINT_URL"
+
+_MODEL_REGISTRY = {
+    "random_forest_classifier": RandomForestClassifier,
+    "logistic_regression": LogisticRegression,
+    "linear_regression": LinearRegression,
+    "random_forest_regressor": RandomForestRegressor,
+}
 
 
 def _parse_s3_uri(uri: str) -> Tuple[Optional[str], Optional[str]]:
@@ -146,22 +154,75 @@ def load_train_data(path: str, target_column: str) -> tuple[pd.DataFrame, pd.Ser
     y = df[target_column]
     return X, y
 
+
+def _get_model_class(model_name: str):
+    name = model_name.lower()
+    model_class = _MODEL_REGISTRY.get(name)
+    if not model_class:
+        supported = ", ".join(sorted(_MODEL_REGISTRY.keys()))
+        raise ValueError(f"Unsupported model_name: {model_name}. Supported models: {supported}")
+    return model_class
+
+
+def _validate_hyperparameters(
+    *,
+    model_name: str,
+    model_class,
+    hyperparameters: Dict[str, Any],
+) -> None:
+    if not hyperparameters:
+        return
+    valid_params = set(model_class().get_params().keys())
+    unknown = sorted(key for key in hyperparameters.keys() if key not in valid_params)
+    if not unknown:
+        return
+
+    suggestions = []
+    for key in unknown:
+        matches = difflib.get_close_matches(key, valid_params, n=3, cutoff=0.6)
+        if matches:
+            suggestions.append(f"{key} -> {', '.join(matches)}")
+    suggestion_text = f" Did you mean: {'; '.join(suggestions)}?" if suggestions else ""
+
+    valid_preview = ", ".join(sorted(valid_params)[:15])
+    remainder = len(valid_params) - 15
+    more_text = f", ... (+{remainder} more)" if remainder > 0 else ""
+    raise ValueError(
+        "Unsupported hyperparameter name(s) for "
+        f"{model_name}: {', '.join(unknown)}."
+        f"{suggestion_text} Valid keys include: {valid_preview}{more_text}"
+    )
+
+
+def _log_model_spec(
+    *,
+    model_name: str,
+    model: Any,
+    hyperparameters: Dict[str, Any],
+) -> None:
+    print("[Training] Model specification")
+    print(f"[Training] - name: {model_name}")
+    print(f"[Training] - estimator: {model.__class__.__name__}")
+    if not hyperparameters:
+        print("[Training] - hyperparameters: (defaults)")
+        return
+    print("[Training] - hyperparameters:")
+    for key in sorted(hyperparameters):
+        print(f"[Training]   - {key}: {hyperparameters[key]!r}")
+
+
 def select_model(
     model_name: str,
     hyperparameters: Dict[str, Any]
 ) -> Any:
     """Instantiate the machine learning model corresponding to model_name, with the given hyperparameters."""
-    name = model_name.lower()
-    if name == "random_forest_classifier":
-        return RandomForestClassifier(**hyperparameters)
-    elif name == "logistic_regression":
-        return LogisticRegression(**hyperparameters)
-    elif name == "linear_regression":
-        return LinearRegression(**hyperparameters)
-    elif name == "random_forest_regressor":
-        return RandomForestRegressor(**hyperparameters)
-    else:
-        raise ValueError(f"Unsupported model_name: {model_name}")
+    model_class = _get_model_class(model_name)
+    _validate_hyperparameters(
+        model_name=model_name,
+        model_class=model_class,
+        hyperparameters=hyperparameters,
+    )
+    return model_class(**hyperparameters)
 
 def train_and_save_model(
     train_data_path: str,
@@ -199,6 +260,11 @@ def train_and_save_model(
 
             # Instantiate model
             model = select_model(model_name, hyperparameters)
+            _log_model_spec(
+                model_name=model_name,
+                model=model,
+                hyperparameters=hyperparameters,
+            )
 
             _log_mlflow_params(
                 model_name=model_name,
@@ -212,6 +278,8 @@ def train_and_save_model(
             model.fit(X_train, y_train)
 
             # Evaluate
+
+            #Try catch & log the metrics error.
             y_pred = model.predict(X_test)
             metrics: Dict[str, float] = {}
             is_classifier = hasattr(model, "predict_proba") or "classifier" in model_name.lower()

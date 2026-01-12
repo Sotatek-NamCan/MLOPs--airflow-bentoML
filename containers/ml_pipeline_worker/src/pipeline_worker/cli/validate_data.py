@@ -62,10 +62,13 @@ def main() -> None:
     dataframe = ingestor.ingest(dataset_path)
 
     validation_overrides = _parse_validation_config(args.validation_config)
-    validation_config = ValidationConfig.from_raw(
-        validation_overrides,
-        target_column=args.target_column,
-    )
+    try:
+        validation_config = ValidationConfig.from_raw(
+            validation_overrides,
+            target_column=args.target_column,
+        )
+    except ValueError as exc:
+        raise SystemExit(f"Invalid validation config: {exc}") from exc
 
     payload_text: str | None = None
     try:

@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Sequence
 import pandas as pd
 from great_expectations.dataset import PandasDataset
 
+from .config_validation import ensure_mapping, validate_config_keys
 
 class DataValidationError(RuntimeError):
     """Raised when one or more expectations fail."""
@@ -59,15 +60,54 @@ class ValidationConfig:
 
     @classmethod
     def from_raw(cls, raw: Mapping[str, Any] | None, *, target_column: str | None) -> "ValidationConfig":
-        raw = raw or {}
+        raw = ensure_mapping(raw, context="validation_config")
+        validate_config_keys(
+            raw,
+            {
+                "min_row_count",
+                "max_row_count",
+                "required_columns",
+                "non_null_columns",
+                "unique_columns",
+                "value_ranges",
+                "allowed_values",
+            },
+            context="validation_config",
+        )
+        raw_value_ranges = ensure_mapping(raw.get("value_ranges"), context="validation_config.value_ranges")
+        for column, range_config in raw_value_ranges.items():
+            if range_config is None:
+                continue
+            if not isinstance(range_config, Mapping):
+                raise ValueError(
+                    "validation_config.value_ranges entries must be JSON objects "
+                    f"(column '{column}' has type {type(range_config).__name__})."
+                )
+            validate_config_keys(
+                range_config,
+                {"min", "max", "strict_min", "strict_max"},
+                context=f"validation_config.value_ranges['{column}']",
+            )
+
+        raw_allowed_values = ensure_mapping(
+            raw.get("allowed_values"), context="validation_config.allowed_values"
+        )
+        for column, allowed in raw_allowed_values.items():
+            if allowed is None:
+                continue
+            if isinstance(allowed, (str, bytes)) or not isinstance(allowed, (list, tuple, set)):
+                raise ValueError(
+                    "validation_config.allowed_values entries must be arrays/sets "
+                    f"(column '{column}' has type {type(allowed).__name__})."
+                )
         config = cls(
             min_row_count=raw.get("min_row_count", 1),
             max_row_count=raw.get("max_row_count"),
             required_columns=_as_list(raw.get("required_columns")),
             non_null_columns=_as_list(raw.get("non_null_columns")),
             unique_columns=_as_list(raw.get("unique_columns")),
-            value_ranges=dict(raw.get("value_ranges") or {}),
-            allowed_values=dict(raw.get("allowed_values") or {}),
+            value_ranges=dict(raw_value_ranges),
+            allowed_values=dict(raw_allowed_values),
         )
         if target_column:
             config.required_columns = _dedup_preserve_order(

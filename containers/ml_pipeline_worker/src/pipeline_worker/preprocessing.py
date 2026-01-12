@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
 
+from .config_validation import ensure_mapping, validate_config_keys
 
 def _as_list(value: Any) -> List[Any]:
     if value is None:
@@ -30,14 +31,57 @@ class CleaningConfig:
 
     @classmethod
     def from_raw(cls, raw: Mapping[str, Any] | None) -> "CleaningConfig":
-        raw = raw or {}
+        raw = ensure_mapping(raw, context="cleaning_config")
+        validate_config_keys(
+            raw,
+            {
+                "drop_columns",
+                "deduplicate",
+                "column_order",
+                "missing_values",
+                "outliers",
+                "transformations",
+            },
+            context="cleaning_config",
+        )
+        missing_values = ensure_mapping(raw.get("missing_values"), context="cleaning_config.missing_values")
+        validate_config_keys(
+            missing_values,
+            {
+                "numeric_strategy",
+                "categorical_strategy",
+                "categorical_fill_value",
+                "column_fill_values",
+            },
+            context="cleaning_config.missing_values",
+        )
+        outliers = ensure_mapping(raw.get("outliers"), context="cleaning_config.outliers")
+        validate_config_keys(
+            outliers,
+            {"method", "columns", "iqr_factor"},
+            context="cleaning_config.outliers",
+        )
+        raw_transformations = raw.get("transformations") or []
+        if not isinstance(raw_transformations, list):
+            raise ValueError("cleaning_config.transformations must be a JSON array.")
+        for idx, transform in enumerate(raw_transformations):
+            if not isinstance(transform, Mapping):
+                raise ValueError(
+                    "cleaning_config.transformations entries must be JSON objects "
+                    f"(index {idx} has type {type(transform).__name__})."
+                )
+            validate_config_keys(
+                transform,
+                {"type", "columns", "method", "shift", "exponent"},
+                context=f"cleaning_config.transformations[{idx}]",
+            )
         return cls(
             drop_columns=_as_list(raw.get("drop_columns")),
             deduplicate=bool(raw.get("deduplicate", True)),
             column_order=_as_list(raw.get("column_order")),
-            missing_values=dict(raw.get("missing_values") or {}),
-            outliers=dict(raw.get("outliers") or {}),
-            transformations=list(raw.get("transformations") or []),
+            missing_values=dict(missing_values),
+            outliers=dict(outliers),
+            transformations=list(raw_transformations),
         )
 
 

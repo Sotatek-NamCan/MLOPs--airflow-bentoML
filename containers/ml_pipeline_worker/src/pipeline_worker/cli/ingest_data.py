@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
+from pipeline_worker.config_validation import validate_config_keys
 from pipeline_worker.ingestion import ingest_data
 from pipeline_worker.artifacts import upload_local_artifact
 
@@ -32,6 +33,11 @@ def _parse_json(value: str) -> Dict[str, Any]:
 
 
 def _build_ingestion_config(args: argparse.Namespace, ingestion_cfg: Dict[str, Any]) -> Dict[str, Any]:
+    validate_config_keys(
+        ingestion_cfg,
+        {"file_path", "file_extension", "zip_extract_dir", "cache_dir"},
+        context="ingestion_config",
+    )
     config: Dict[str, Any] = {
         "file_path": ingestion_cfg.get("file_path"),
         "file_extension": ingestion_cfg.get("file_extension"),
@@ -71,7 +77,10 @@ def main() -> None:
 
     args = parser.parse_args()
     ingestion_cfg = _parse_json(args.ingestion_config)
-    config = _build_ingestion_config(args, ingestion_cfg)
+    try:
+        config = _build_ingestion_config(args, ingestion_cfg)
+    except ValueError as exc:
+        raise SystemExit(f"Invalid ingestion config: {exc}") from exc
     project_root = Path(args.project_root).resolve()
 
     _, local_path = ingest_data(config=config, project_root=project_root)

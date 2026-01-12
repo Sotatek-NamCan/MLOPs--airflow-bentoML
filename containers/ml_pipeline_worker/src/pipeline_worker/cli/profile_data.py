@@ -58,7 +58,10 @@ def main() -> None:
 
     ingestor = DataIngestorFactory.get_data_ingestor(extension)
     dataframe = ingestor.ingest(dataset_path)
-    profile_summary = build_profile_summary(dataframe, _parse_profile_config(args.profile_config))
+    try:
+        profile_summary = build_profile_summary(dataframe, _parse_profile_config(args.profile_config))
+    except ValueError as exc:
+        raise SystemExit(f"Invalid profile config: {exc}") from exc
 
     payload = json.dumps(profile_summary, indent=2, default=_json_default)
     print(payload)

@@ -62,7 +62,10 @@ def main() -> None:
 
     tmp_dir = Path(tempfile.mkdtemp())
     viz_dir = tmp_dir / "visualizations"
-    summary = render_visualizations(dataframe, viz_dir, _parse_viz_config(args.visualization_config))
+    try:
+        summary = render_visualizations(dataframe, viz_dir, _parse_viz_config(args.visualization_config))
+    except ValueError as exc:
+        raise SystemExit(f"Invalid visualization config: {exc}") from exc
     summary_path = viz_dir / "visualization_summary.json"
     summary_path.write_text(json.dumps(summary, indent=2, default=_json_default), encoding="utf-8")
 

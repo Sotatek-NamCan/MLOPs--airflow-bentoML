@@ -57,7 +57,10 @@ def main() -> None:
     ingestor = DataIngestorFactory.get_data_ingestor(extension)
     dataframe = ingestor.ingest(dataset_path)
 
-    cleaning_config = CleaningConfig.from_raw(_parse_cleaning_config(args.cleaning_config))
+    try:
+        cleaning_config = CleaningConfig.from_raw(_parse_cleaning_config(args.cleaning_config))
+    except ValueError as exc:
+        raise SystemExit(f"Invalid cleaning config: {exc}") from exc
     cleaned_df, summary = clean_dataframe(dataframe, cleaning_config)
 
     tmp_dir = Path(tempfile.mkdtemp())

@@ -7,6 +7,7 @@ from typing import Any, Dict, Mapping
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
 
+from .config_validation import validate_config_keys
 
 def _as_float(value: Any) -> float:
     try:
@@ -18,6 +19,11 @@ def _as_float(value: Any) -> float:
 def build_profile_summary(df: pd.DataFrame, config: Mapping[str, Any] | None = None) -> Dict[str, Any]:
     """Return descriptive statistics for each feature in the dataframe."""
     config = config or {}
+    validate_config_keys(
+        config,
+        {"top_value_count", "include_percentiles"},
+        context="profile_config",
+    )
     top_value_count = int(config.get("top_value_count", 5) or 5)
     percentiles = config.get("include_percentiles", [0.25, 0.5, 0.75])
 
@@ -73,6 +79,11 @@ def render_visualizations(
     import matplotlib.pyplot as plt
 
     config = config or {}
+    validate_config_keys(
+        config,
+        {"max_numeric_charts", "max_categorical_charts", "top_value_count", "plot_format"},
+        context="visualization_config",
+    )
     numeric_limit = int(config.get("max_numeric_charts", 10) or 10)
     categorical_limit = int(config.get("max_categorical_charts", 10) or 10)
     top_value_count = int(config.get("top_value_count", 5) or 5)
