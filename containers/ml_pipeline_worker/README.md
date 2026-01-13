@@ -95,6 +95,52 @@ Tune flow (`python -m pipeline_worker.cli.tune_model`).
 Notes:
 - `load_train_data` drops non-numeric feature columns and fails if no numeric features remain.
 
+## Adding metrics and logging to MLflow
+
+Metrics are computed and logged inside `train_and_save_model()` in
+`containers/ml_pipeline_worker/src/pipeline_worker/train_utils.py`.
+
+Exact locations (line numbers reflect the current file and may shift after edits):
+- `_record_metric()` helper: `containers/ml_pipeline_worker/src/pipeline_worker/train_utils.py:214`
+- Predictions used for metrics: `containers/ml_pipeline_worker/src/pipeline_worker/train_utils.py:314`
+- Classification metrics block: `containers/ml_pipeline_worker/src/pipeline_worker/train_utils.py:318`
+- Regression metrics block: `containers/ml_pipeline_worker/src/pipeline_worker/train_utils.py:342`
+- MLflow metric logging loop: `containers/ml_pipeline_worker/src/pipeline_worker/train_utils.py:363`
+
+Checklist:
+- Add your metric calculation in the classification/regression block after
+  `y_pred = model.predict(X_test)`.
+- Use `_record_metric(metrics, name, compute_fn)` so invalid values are safely
+  skipped (non-numeric, NaN/inf, exceptions).
+- Metrics are logged to MLflow via the existing loop:
+  `mlflow.log_metric(name, value)`.
+
+Example (classification metric with probabilities):
+```
+from sklearn.metrics import roc_auc_score
+
+if hasattr(model, "predict_proba"):
+    y_proba = model.predict_proba(X_test)
+    _record_metric(
+        metrics,
+        "roc_auc",
+        lambda: roc_auc_score(y_test, y_proba, multi_class="ovr"),
+    )
+```
+
+Example (regression metric):
+```
+from sklearn.metrics import median_absolute_error
+
+_record_metric(metrics, "median_ae", lambda: median_absolute_error(y_test, y_pred))
+```
+
+Notes:
+- Prefer `_record_metric` instead of direct `mlflow.log_metric` so invalid values
+  do not fail the training run.
+- If your metric needs extra model outputs (probabilities, decision scores),
+  guard with `hasattr(model, ...)` to avoid exceptions.
+
 ## Adding a model 
 
 ### Train model flow (only training, no HPO)

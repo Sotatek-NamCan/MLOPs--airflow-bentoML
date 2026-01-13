@@ -101,11 +101,35 @@ def pipeline_task(
 
 PIPELINE_PARAMS = {
     "data_source": Param("", type="string", description="Location of the dataset to ingest."),
-    "data_format": Param("csv", type="string", description="Dataset format (csv, json, parquet...)."),
+    "data_format": Param(
+        "csv",
+        type="string",
+        description="Dataset format. Supported values: csv, json, parquet.",
+    ),
     "input_schema_version": Param("v1", type="string", description="Schema version (optional hook)."),
-    "model_name": Param("random_forest_classifier", type="string", description="Model identifier."),
+    "model_name": Param(
+        "random_forest_classifier",
+        type="string",
+        description=(
+            "Model identifier. Supported values: "
+            "random_forest_classifier, logistic_regression, linear_regression, "
+            "random_forest_regressor."
+        ),
+    ),
     "model_version": Param("1", type="string", description="Model version string."),
-    "hyperparameters": Param({"n_estimators": 100, "max_depth": 5}, type="object", description="Model hyperparameters."),
+    "hyperparameters": Param(
+        {"n_estimators": 100, "max_depth": 5},
+        type="object",
+        description=(
+            "Model hyperparameters. Supported keys by model_name:\n"
+            "- random_forest_classifier: n_estimators, max_depth, min_samples_split, "
+            "min_samples_leaf, max_features, class_weight\n"
+            "- logistic_regression: C, solver, max_iter, penalty, class_weight\n"
+            "- linear_regression: fit_intercept, normalize\n"
+            "- random_forest_regressor: n_estimators, max_depth, min_samples_split, "
+            "min_samples_leaf, max_features"
+        ),
+    ),
     "training_scenario": Param("full_train", type="string", description="Training scenario label."),
     "target_output_path": Param("s3://bucket/output/", type="string", description="Folder/URI for model artifacts."),
     "test_size": Param(0.2, type="number", description="Validation split ratio."),
@@ -161,7 +185,17 @@ PIPELINE_PARAMS = {
             "search_space": {},
         },
         type="object",
-        description="Optuna tuning settings (set enabled true to search).",
+        description=(
+            "Optuna tuning settings (set enabled true to search). "
+            "search_space keys must match the model_name hyperparameters.\n"
+            "Supported search_space keys by model_name:\n"
+            "- random_forest_classifier: n_estimators, max_depth, min_samples_split, "
+            "min_samples_leaf, max_features, class_weight\n"
+            "- logistic_regression: C, solver, max_iter, penalty, class_weight\n"
+            "- linear_regression: fit_intercept, normalize\n"
+            "- random_forest_regressor: n_estimators, max_depth, min_samples_split, "
+            "min_samples_leaf, max_features"
+        ),
     ),
 }
 

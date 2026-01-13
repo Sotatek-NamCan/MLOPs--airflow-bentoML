@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import difflib
 import math
 import os
 import pickle
@@ -143,7 +142,7 @@ def load_train_data(path: str, target_column: str) -> tuple[pd.DataFrame, pd.Ser
     numeric_features = feature_df.select_dtypes(include=["number", "bool"])
     dropped_columns = [col for col in feature_df.columns if col not in numeric_features.columns]
     if dropped_columns:
-        print(f"[Training] Dropping non-numeric feature columns: {dropped_columns}")
+        print(f"❗[Training] Dropping non-numeric feature columns: {dropped_columns}")
     if numeric_features.empty:
         raise ValueError(
             "No numeric features remain after dropping non-numeric columns. "
@@ -160,7 +159,7 @@ def _get_model_class(model_name: str):
     model_class = _MODEL_REGISTRY.get(name)
     if not model_class:
         supported = ", ".join(sorted(_MODEL_REGISTRY.keys()))
-        raise ValueError(f"Unsupported model_name: {model_name}. Supported models: {supported}")
+        raise ValueError(f"❗Unsupported model_name: {model_name}. Supported models: {supported}")
     return model_class
 
 
@@ -172,25 +171,28 @@ def _validate_hyperparameters(
 ) -> None:
     if not hyperparameters:
         return
-    valid_params = set(model_class().get_params().keys())
+    try:
+        valid_params = set(model_class().get_params().keys())
+    except Exception as exc:
+        print(f"❗[Training] Failed to read hyperparameters for {model_name}: {exc}")
+        raise
+
     unknown = sorted(key for key in hyperparameters.keys() if key not in valid_params)
     if not unknown:
         return
 
-    suggestions = []
-    for key in unknown:
-        matches = difflib.get_close_matches(key, valid_params, n=3, cutoff=0.6)
-        if matches:
-            suggestions.append(f"{key} -> {', '.join(matches)}")
-    suggestion_text = f" Did you mean: {'; '.join(suggestions)}?" if suggestions else ""
-
     valid_preview = ", ".join(sorted(valid_params)[:15])
     remainder = len(valid_params) - 15
     more_text = f", ... (+{remainder} more)" if remainder > 0 else ""
+    print(
+        "❗ [Training] Unsupported hyperparameter name(s) for "
+        f"{model_name}: {', '.join(unknown)}. "
+        f"Valid keys include: {valid_preview}{more_text}"
+    )
     raise ValueError(
-        "Unsupported hyperparameter name(s) for "
-        f"{model_name}: {', '.join(unknown)}."
-        f"{suggestion_text} Valid keys include: {valid_preview}{more_text}"
+        "❗Unsupported hyperparameter name(s) for "
+        f"{model_name}: {', '.join(unknown)}. "
+        f"Valid keys include: {valid_preview}{more_text}"
     )
 
 
@@ -219,18 +221,18 @@ def _record_metric(
     try:
         value = compute()
     except Exception as exc:
-        print(f"[Training] Skipping metric {name}: {exc}")
+        print(f"❗[Training] Skipping metric {name}: {exc}")
         return
     if value is None:
-        print(f"[Training] Skipping metric {name}: value is None")
+        print(f"❗[Training] Skipping metric {name}: value is None")
         return
     try:
         numeric_value = float(value)
     except (TypeError, ValueError) as exc:
-        print(f"[Training] Skipping metric {name}: non-numeric value {value!r} ({exc})")
+        print(f"❗[Training] Skipping metric {name}: non-numeric value {value!r} ({exc})")
         return
     if not math.isfinite(numeric_value):
-        print(f"[Training] Skipping metric {name}: non-finite value {numeric_value!r}")
+        print(f"❗[Training] Skipping metric {name}: non-finite value {numeric_value!r}")
         return
     metrics[name] = numeric_value
 
@@ -299,7 +301,16 @@ def train_and_save_model(
             )
 
             # Train
-            model.fit(X_train, y_train)
+            try:
+                model.fit(X_train, y_train)
+            except Exception as exc:
+                raise RuntimeError(
+                    "Model training failed. "
+                    f"model={model_name}, version={model_version}, "
+                    f"data={train_data_path}, "
+                    f"X_train_shape={getattr(X_train, 'shape', None)}, "
+                    f"y_train_shape={getattr(y_train, 'shape', None)}"
+                ) from exc
 
             # Evaluate
             y_pred = model.predict(X_test)
