@@ -148,9 +148,9 @@ Notes:
 Files and functions you must touch (line numbers reflect current file; may shift after edits).
 - `containers/ml_pipeline_worker/src/pipeline_worker/train_utils.py`
   - `_MODEL_REGISTRY` at line 50: add a new key, example `"xgboost_classifier": XGBClassifier`.
-  - `select_model()` at line 238: uses `_MODEL_REGISTRY`, so `--model-name` must match the key.
-  - `train_and_save_model()` at line 251: add or adjust metrics via `_record_metric(...)`.
-  - `_record_metric()` at line 214: shared validation/logging for metrics.
+  - `select_model()` at line 240: uses `_MODEL_REGISTRY`, so `--model-name` must match the key.
+  - `train_and_save_model()` at line 253: add or adjust metrics via `_record_metric(...)`.
+  - `_record_metric()` at line 216: shared validation/logging for metrics.
   - `_validate_hyperparameters()` at line 167: requires `get_params()` to exist.
 - `containers/ml_pipeline_worker/src/pipeline_worker/cli/train_model.py`
   - `main()` at line 22: reads CLI args and calls `train_and_save_model()`.
